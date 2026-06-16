@@ -14,17 +14,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const shop = await verifyShopifySessionToken(tok);
   if (!shop) return NextResponse.json({ active: false, confirmationUrl: null, debug: "VERIFY_FAILED" });
 
-  const existing = await getShop(shop);
-  const fresh = !!existing?.accessToken && !!existing.expiresAt && existing.expiresAt > Date.now() + 60_000;
-  if (!fresh) {
-    const ex = await exchangeSessionToken(shop, tok);
-    if (ex) {
-      await saveShop(shop, ex.accessToken, ex.scope, ex.expiresAt);
-    } else if (!existing?.accessToken) {
+  // Always exchange the session token for a fresh EXPIRING offline token.
+  // This self-heals any legacy non-expiring token still cached in Firestore.
+  const ex = await exchangeSessionToken(shop, tok);
+  if (ex && ex.expiresAt > Date.now()) {
+    await saveShop(shop, ex.accessToken, ex.scope, ex.expiresAt);
+  } else {
+    const existing = await getShop(shop);
+    if (!existing?.accessToken) {
       return NextResponse.json({ active: false, confirmationUrl: null, debug: "EXCHANGE_FAILED_NO_TOKEN" });
-    } else {
-      return NextResponse.json({ active: false, confirmationUrl: null, debug: "EXCHANGE_FAILED_STALE_TOKEN" });
     }
+    // Exchange failed but a cached token exists — let the API attempt it.
   }
 
   const sub = await getActiveSubscription(shop);

@@ -27,6 +27,9 @@ export async function exchangeSessionToken(
     subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
     requested_token_type:
       "urn:shopify:params:oauth:token-type:offline-access-token",
+    // REQUIRED: without expiring=1 Shopify returns a NON-expiring offline token,
+    // which the Admin API now rejects with 403. expiring=1 → expiring token + expires_in.
+    expiring: "1",
   };
 
   let res: Response;
@@ -65,9 +68,12 @@ export async function exchangeSessionToken(
     return null;
   }
 
-  // expires_in is seconds; fall back to 23 h if absent
-  const expiresAt =
-    Date.now() + (json.expires_in ? json.expires_in * 1000 : 23 * 3600 * 1000);
+  // expires_in (seconds) is present only for expiring tokens. If it is ABSENT,
+  // we got a non-expiring token (Admin API will reject it) — stamp expiresAt in
+  // the past so the caller never treats it as fresh and always re-exchanges.
+  const expiresAt = json.expires_in
+    ? Date.now() + json.expires_in * 1000
+    : 0;
 
   return {
     accessToken: json.access_token,

@@ -25,9 +25,6 @@ import {
 import { getShop, saveShop } from "@/lib/shopify/shops";
 import { exchangeSessionToken } from "@/lib/shopify/tokenExchange";
 
-/** Refresh when fewer than 60 seconds remain before expiry. */
-const EXPIRY_BUFFER_MS = 60_000;
-
 export async function requireShop(req: NextRequest): Promise<string | null> {
   // 1. Extract raw session token from the Authorization header.
   const sessionToken = getSessionTokenFromRequest(req);
@@ -37,27 +34,23 @@ export async function requireShop(req: NextRequest): Promise<string | null> {
   const shop = await verifyShopifySessionToken(sessionToken);
   if (!shop) { console.error("[requireShop] session token present but verify returned null"); return null; }
 
-  // 3. Load the current persisted record.
-  const existing = await getShop(shop);
+  // 3. Always exchange the session token for a fresh EXPIRING offline token.
+  //    Token exchange is cheap and is the recommended per-request auth pattern;
+  //    it also self-heals any legacy non-expiring token cached in Firestore
+  //    (non-expiring tokens are rejected by the Admin API with 403).
+  const exchanged = await exchangeSessionToken(shop, sessionToken);
 
-  // 4. Decide whether a token exchange is needed.
-  const needsRefresh =
-    !existing?.accessToken ||
-    existing.expiresAt === undefined ||
-    existing.expiresAt < Date.now() + EXPIRY_BUFFER_MS;
-
-  if (needsRefresh) {
-    const exchanged = await exchangeSessionToken(shop, sessionToken);
-
-    if (exchanged) {
-      await saveShop(shop, exchanged.accessToken, exchanged.scope, exchanged.expiresAt);
-    } else if (!existing?.accessToken) {
+  if (exchanged && exchanged.expiresAt > Date.now()) {
+    await saveShop(shop, exchanged.accessToken, exchanged.scope, exchanged.expiresAt);
+  } else {
+    const existing = await getShop(shop);
+    if (!existing?.accessToken) {
       // Exchange failed and we have nothing cached — cannot serve the request.
       console.error(`[requireShop] token exchange failed for ${shop} and no cached token exists`);
       return null;
     }
-    // If exchange failed but an existing (possibly stale) token exists, fall
-    // through and let shopifyFetch attempt it — Shopify will 401 if truly dead.
+    // Exchange failed but a cached token exists — fall through and let
+    // shopifyFetch attempt it; Shopify will 401/403 if truly dead.
   }
 
   // 5. Return the verified shop domain.
