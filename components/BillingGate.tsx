@@ -8,20 +8,17 @@ type GateState = "checking" | "active" | "required";
 interface BillingStatus {
   active: boolean;
   confirmationUrl?: string | null;
-  error?: string;
-  debug?: string;
 }
 
 export default function BillingGate({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<GateState>("checking");
   const [confirmationUrl, setConfirmationUrl] = useState<string | null>(null);
-  const [debug, setDebug] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
 
     async function check() {
-      // Wait for App Bridge v4 to expose shopify.idToken (max ~5 s)
+      // Wait for App Bridge v4 to expose shopify.idToken (max ~5 s).
       const deadline = Date.now() + 5000;
       while (
         typeof window !== "undefined" &&
@@ -31,34 +28,21 @@ export default function BillingGate({ children }: { children: React.ReactNode })
         await new Promise((r) => setTimeout(r, 100));
       }
 
-      // Client-side App Bridge diagnostic
-      const w = globalThis as unknown as { shopify?: { idToken?: () => Promise<string> } };
-      const hasShopify = !!w.shopify;
-      const hasIdToken = typeof w.shopify?.idToken === "function";
-      const host = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("host") : null;
-      let tokLen = 0;
-      let tokErr = "";
-      if (hasIdToken) {
-        try { tokLen = (await w.shopify!.idToken!())?.length ?? 0; } catch (e) { tokErr = e instanceof Error ? e.message : String(e); }
-      }
-      const clientDiag = `shopify=${hasShopify} idToken=${hasIdToken} host=${host ? "yes" : "no"} tokLen=${tokLen}${tokErr ? " err=" + tokErr : ""}`;
-
       try {
         const res = await apiFetch("/api/shopify/billing/status");
         if (cancelled) return;
 
-        const data: BillingStatus = res.ok ? await res.json() : { active: false, debug: `HTTP_${res.status}` };
+        const data: BillingStatus = res.ok ? await res.json() : { active: false };
         if (cancelled) return;
 
         if (data.active) {
           setState("active");
         } else {
           setConfirmationUrl(data.confirmationUrl ?? null);
-          setDebug(`${data.debug ?? data.error ?? ""} | ${clientDiag}`);
           setState("required");
         }
       } catch {
-        if (!cancelled) { setDebug(`fetch_threw | ${clientDiag}`); setState("required"); }
+        if (!cancelled) setState("required");
       }
     }
 
@@ -137,12 +121,7 @@ export default function BillingGate({ children }: { children: React.ReactNode })
         </button>
       ) : (
         <p style={{ margin: 0, opacity: 0.6 }}>
-          Couldn&apos;t start billing — refresh to retry.
-        </p>
-      )}
-      {debug && (
-        <p style={{ margin: 0, marginTop: "0.5rem", fontSize: "0.75rem", opacity: 0.5, fontFamily: "monospace" }}>
-          diag: {debug}
+          Couldn&apos;t start billing — please refresh to retry.
         </p>
       )}
     </div>
