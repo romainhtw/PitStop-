@@ -4,26 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
-import { collection, getDocs, query, orderBy } from "firebase/firestore/lite";
-import { db } from "@/lib/firebase";
-import type { PurchaseOrder, POStatus, ShopifyProduct } from "@/lib/types";
-import FeedbackChat from "@/components/FeedbackChat";
-import { StatusBadge, StatusDot } from "@/components/ui/StatusBadge";
+import type { PurchaseOrder, POStatus } from "@/lib/types";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { StatusType } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
-
-const PO_CHAT_CONTEXT = `The user is talking about the Purchase Orders feature in PitStop — an internal ops tool for Elite Racing Cycles, a bike shop in Perth with 10 staff and 5 per shift.
-
-The Purchase Orders feature currently allows:
-- Creating POs by uploading a supplier invoice PDF (auto-parsed)
-- Adding line items manually with cost price, retail price, quantity, SKU, barcode
-- Shopify smart sync: matches products by SKU → barcode → product name search with "Did you mean?" confirmation
-- Review page with dry-run preview before live sync
-- Supplier and invoice metadata (supplier name, invoice number, date, location)
-- Status tracking: draft → awaiting review → approved
-- Delete POs
-
-Your job is to ask 3-5 targeted questions to understand exactly what modification or improvement they want, then generate a brief to send to Romain.`;
 
 function fmt(n: number) {
   return `$${n.toFixed(2)}`;
@@ -130,7 +114,6 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [stockAlerts, setStockAlerts] = useState<{ out: number; low: number } | null>(null);
   const [reusing, setReusing] = useState<string | null>(null);
 
   useEffect(() => {
@@ -138,15 +121,6 @@ export default function DashboardPage() {
       .then((r) => r.json())
       .then((data) => setOrders(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
-
-    getDocs(query(collection(db, "shopifyProducts"), orderBy("productTitle")))
-      .then((snap) => {
-        const products = snap.docs.map((d) => d.data() as ShopifyProduct);
-        const out = products.filter((p) => (p.onHandQtyStore ?? 0) + (p.onHandQtyWarehouse ?? 0) <= 0).length;
-        const low = products.filter((p) => { const q = (p.onHandQtyStore ?? 0) + (p.onHandQtyWarehouse ?? 0); return q > 0 && q <= 3; }).length;
-        setStockAlerts({ out, low });
-      })
-      .catch(() => {});
   }, []);
 
   async function handleReuse(po: PurchaseOrder) {
@@ -216,7 +190,6 @@ export default function DashboardPage() {
           <p className="text-xs text-text-tertiary mt-0.5 font-mono">Inventory at a glance</p>
         </div>
         <div className="flex items-center gap-2">
-          <FeedbackChat context={PO_CHAT_CONTEXT} buttonLabel="Help · Feedback" />
           <Link href="/purchase-orders/new/manual">
             <Button variant="secondary" size="sm">+ Manual order</Button>
           </Link>
@@ -231,28 +204,7 @@ export default function DashboardPage() {
         <StatCard label="Cost Value"  value={fmt(totalCost)}   loading={loading} />
         <StatCard label="Retail Value" value={fmt(totalRetail)} loading={loading} />
         <StatCard label="Total Items" value={totalItems}        loading={loading} />
-        <StatCard label="Stock Alerts" value="" loading={stockAlerts === null} href="/catalog?filter=out">
-          {stockAlerts !== null && (
-            stockAlerts.out === 0 && stockAlerts.low === 0 ? (
-              <p className="font-mono text-sm text-status-match">All clear</p>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {stockAlerts.out > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <StatusDot status="QTY_SHORTAGE" />
-                    <span className="font-mono text-xs text-status-shortage">{stockAlerts.out} out of stock</span>
-                  </div>
-                )}
-                {stockAlerts.low > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <StatusDot status="COST_DRIFT" />
-                    <span className="font-mono text-xs text-status-drift">{stockAlerts.low} low stock</span>
-                  </div>
-                )}
-              </div>
-            )
-          )}
-        </StatCard>
+        <StatCard label="Stock Alerts" value="—" loading={false} href="/catalog" />
       </div>
 
       {/* Purchase Orders table */}

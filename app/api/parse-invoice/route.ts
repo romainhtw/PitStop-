@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from "uuid";
 import { waitUntil } from "@vercel/functions";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { requireShop } from "@/lib/shopify/requireShop";
-import { recordInvoiceUsage, checkAndRecordFreeUsage } from "@/lib/stripe/usageTracking";
 import type { PurchaseOrder } from "@/lib/types";
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -40,28 +39,6 @@ export async function POST(req: NextRequest) {
     const shop = await requireShop(req);
     if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     const merchantId = shop;
-
-    // ── Free tier gate ────────────────────────────────────────────────────────
-    const merchantSnap = await adminDb.collection("merchants").doc(merchantId).get();
-    const merchantPlan: string = merchantSnap.exists
-      ? ((merchantSnap.data()?.plan as string) ?? "free")
-      : "free";
-
-    if (merchantPlan === "free") {
-      const { allowed, used, limit } = await checkAndRecordFreeUsage(merchantId);
-      if (!allowed) {
-        return NextResponse.json(
-          {
-            error: `Free plan limit reached (${limit} invoices/month). Upgrade to continue uploading.`,
-            limitReached: true,
-            used,
-            limit,
-          },
-          { status: 402 }
-        );
-      }
-    }
-    // ── End free tier gate ────────────────────────────────────────────────────
 
     const formData = await req.formData();
     const file = formData.get("file");
@@ -173,12 +150,12 @@ export async function POST(req: NextRequest) {
 --- ITEM NAME AND OPTIONS ---
 - name: BASE product name ONLY — no size/colour variants in this field
 - optionValues: all variant attributes as structured array
-  · "Trek FX 3 Disc - Large - Matte Black" → name: "Trek FX 3 Disc", optionValues: [{"optionName":"Size","optionValue":"Large"},{"optionName":"Colour","optionValue":"Matte Black"}]
-  · "SMILEY 3.0 ACE LED blue S" → name: "SMILEY 3.0 ACE LED", optionValues: [{"optionName":"Colour","optionValue":"Blue"},{"optionName":"Size","optionValue":"S"}]
+  · "Brand Model - Large - Black" → name: "Brand Model", optionValues: [{"optionName":"Size","optionValue":"Large"},{"optionName":"Colour","optionValue":"Black"}]
+  · "Product Name Blue S" → name: "Product Name", optionValues: [{"optionName":"Colour","optionValue":"Blue"},{"optionName":"Size","optionValue":"S"}]
 - No variants → optionValues: []
 
 --- CATEGORY ---
-- Extract from invoice or infer: Helmets, Apparel, Components, Accessories, Bikes, Footwear, Electronics, Tools, Nutrition
+- Extract from invoice or infer from product type (e.g. Apparel, Footwear, Electronics, Accessories, Tools, Nutrition, Home, Sports, Toys)
 
 --- GST ---
 - gstApplicable: true for all standard goods. false ONLY if explicitly marked GST-free${supplierHints}`,
@@ -263,16 +240,6 @@ export async function POST(req: NextRequest) {
     console.log("[parse-invoice] Saving to Firestore, poId:", poId);
     await adminDb.collection("purchaseOrders").doc(poId).set(po);
     console.log("[parse-invoice] Saved to Firestore OK");
-
-    // Track usage + Stripe overage in background (non-blocking).
-    // Free-tier merchants are already counted in the gate above — skip here.
-    if (merchantPlan !== "free") {
-      waitUntil(
-        recordInvoiceUsage().catch((err) =>
-          console.error("[parse-invoice] Usage tracking failed:", err)
-        )
-      );
-    }
 
     // Upsert supplier in background — use waitUntil so Vercel doesn't freeze before the write completes
     if (parsed.supplier) {

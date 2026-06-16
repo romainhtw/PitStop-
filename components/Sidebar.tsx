@@ -23,9 +23,7 @@ const NAV_GROUPS = [
   {
     label: "Catalog",
     items: [
-      { href: "/catalog",     label: "Catalog"     },
-      { href: "/price-audit", label: "Price Audit" },
-      { href: "/transfers",   label: "Transfers"   },
+      { href: "/catalog", label: "Catalog" },
     ],
   },
   {
@@ -141,25 +139,6 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* Footer strip */}
         <div className="flex-none border-t border-border-0">
-          <Link
-            href="/billing"
-            onClick={onClose}
-            className={[
-              "flex items-center gap-2.5 h-9 px-5 text-sm transition-colors duration-75 border-l-2",
-              pathname === "/billing"
-                ? "border-accent text-text-primary font-medium bg-accent-muted"
-                : "border-transparent text-text-tertiary hover:text-text-secondary",
-            ].join(" ")}
-          >
-            {/* Card icon — minimal, no rounding */}
-            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 16 12" stroke="currentColor" strokeWidth={1.2}>
-              <rect x="0.6" y="0.6" width="14.8" height="10.8" strokeLinejoin="miter"/>
-              <line x1="0.6" y1="3.5" x2="15.4" y2="3.5"/>
-              <line x1="3" y1="7.5" x2="7" y2="7.5"/>
-              <line x1="3" y1="9.2" x2="5.5" y2="9.2"/>
-            </svg>
-            Billing
-          </Link>
           <button
             onClick={cycleViewMode}
             className="flex items-center gap-2 h-8 px-5 w-full text-xs text-text-tertiary hover:text-text-secondary transition-colors"
@@ -167,7 +146,6 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             <span className="font-mono text-2xs tracking-widest">{VIEW_LABELS[viewMode]}</span>
             <span>View mode</span>
           </button>
-          <p className="px-5 pb-1 text-2xs font-mono text-text-tertiary opacity-50">Perth · WA</p>
           {/* Arc Labs credit */}
           <a
             href="https://www.arc-labs.com.au"

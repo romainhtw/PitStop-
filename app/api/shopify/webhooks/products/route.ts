@@ -67,9 +67,9 @@ export async function POST(req: NextRequest) {
       .get();
     if (!snap.empty) merchantId = snap.docs[0].id;
   }
-  // Fallback for the original single-tenant Elite Racing instance (env-configured domain)
+  // Fallback for env-configured single-tenant domain (set SHOPIFY_STORE_DOMAIN + SHOPIFY_MERCHANT_ID)
   if (!merchantId && shopDomain && shopDomain === (process.env.SHOPIFY_STORE_DOMAIN ?? "").trim().toLowerCase()) {
-    merchantId = "elite-racing";
+    merchantId = process.env.SHOPIFY_MERCHANT_ID ?? "";
   }
   if (!merchantId) {
     // Unknown shop — ack so Shopify stops retrying, but write nothing

@@ -139,7 +139,7 @@ export default function ManualPurchaseOrderPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-xs text-text-secondary mb-1 block">Supplier *</label>
-            <input className={inputCls} value={supplier} placeholder="e.g. BikeCorp Australia" onChange={(e) => setSupplier(e.target.value)} />
+            <input className={inputCls} value={supplier} placeholder="e.g. Supplier Name" onChange={(e) => setSupplier(e.target.value)} />
           </div>
           <div>
             <label className="text-xs text-text-secondary mb-1 block">Order / PO Number</label>

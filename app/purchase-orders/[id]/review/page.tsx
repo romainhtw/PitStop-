@@ -4,7 +4,6 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/apiClient";
 import BackButton from "@/components/BackButton";
-import ShopifyConfigModal from "@/components/ShopifyConfigModal";
 import ProductPicker from "@/components/ProductPicker";
 import { v4 as uuidv4 } from "uuid";
 import type { InvoiceTotals, LineItem, PurchaseOrder, ShopifyProduct, SyncResult, VariantSuggestion } from "@/lib/types";
@@ -144,11 +143,6 @@ export default function ReviewPurchaseOrderPage() {
   // Which line item's product-search modal is open (null = closed). "__add__" = add a brand-new item.
   const [pickerForLine, setPickerForLine] = useState<string | null>(null);
 
-  // Shopify config gate — set after /api/auth/me resolves
-  const [merchantId, setMerchantId] = useState<string | null>(null);
-  const [showShopifyConfig, setShowShopifyConfig] = useState(false);
-  // After modal saves, resume the action that triggered it ("preview" | "sync")
-  const [pendingSyncAction, setPendingSyncAction] = useState<null | "preview" | "sync">(null);
 
   const [manualSearchQueries, setManualSearchQueries] = useState<Record<string, string>>({});
   const [manualSearchResults, setManualSearchResults] = useState<Record<string, VariantSuggestion[]>>({});
@@ -157,16 +151,6 @@ export default function ReviewPurchaseOrderPage() {
   const [showCreateFor, setShowCreateFor] = useState<Record<string, boolean>>({});
   const [createFormData, setCreateFormData] = useState<Record<string, { title: string; sku: string; barcode: string; price: string; productType: string }>>({});
   const [creating, setCreating] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    // Discover caller's merchantId via middleware-verified session
-    apiFetch("/api/auth/me")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { merchantId?: string } | null) => {
-        if (data?.merchantId) setMerchantId(data.merchantId);
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     const applyCatalog = (products: ShopifyProduct[]) => {
@@ -548,25 +532,7 @@ export default function ReviewPurchaseOrderPage() {
     }
   };
 
-  // Returns true if Shopify is configured for this merchant; otherwise opens the
-  // config modal and returns false. The pending action is replayed onSuccess.
-  async function ensureShopifyConfigured(action: "preview" | "sync"): Promise<boolean> {
-    if (!merchantId) return true; // legacy single-tenant session — let the API handle it
-    try {
-      const res = await apiFetch(`/api/merchants/${merchantId}/config-status`);
-      if (!res.ok) return true; // fail-open: don't block on a transient error
-      const data = await res.json() as { configured?: boolean };
-      if (data.configured) return true;
-    } catch {
-      return true;
-    }
-    setPendingSyncAction(action);
-    setShowShopifyConfig(true);
-    return false;
-  }
-
   const handlePreview = async () => {
-    if (!(await ensureShopifyConfigured("preview"))) return;
     setPreviewing(true);
     setError(null);
     try {
@@ -604,7 +570,6 @@ export default function ReviewPurchaseOrderPage() {
   };
 
   const handleConfirmSync = async () => {
-    if (!(await ensureShopifyConfigured("sync"))) return;
     setSyncing(true);
     setError(null);
     setDuplicateInvoiceError(null);
@@ -1726,23 +1691,6 @@ export default function ReviewPurchaseOrderPage() {
       )}
       </div>
 
-      {showShopifyConfig && merchantId && (
-        <ShopifyConfigModal
-          merchantId={merchantId}
-          onClose={() => {
-            setShowShopifyConfig(false);
-            setPendingSyncAction(null);
-          }}
-          onSuccess={() => {
-            setShowShopifyConfig(false);
-            const action = pendingSyncAction;
-            setPendingSyncAction(null);
-            // Resume what the user originally clicked.
-            if (action === "preview") void handlePreview();
-            else if (action === "sync") void handleConfirmSync();
-          }}
-        />
-      )}
     </div>
   );
 }
