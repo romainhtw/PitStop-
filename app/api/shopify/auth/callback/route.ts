@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isValidShop, verifyOAuthHmac, exchangeCodeForToken } from "@/lib/shopify/oauth";
 import { saveShop } from "@/lib/shopify/shops";
+import { shopifyFetch } from "@/lib/shopify";
 
 export const runtime = "nodejs";
 
@@ -50,6 +51,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     // 5. Persist to Firestore
     await saveShop(shop, access_token, scope);
+
+    // 5a. Register app/uninstalled webhook (non-fatal — don't block the redirect)
+    await shopifyFetch(
+      shop,
+      `mutation { webhookSubscriptionCreate(topic: APP_UNINSTALLED, webhookSubscription: { callbackUrl: "${process.env.SHOPIFY_APP_URL}/api/shopify/webhooks/app-uninstalled", format: JSON }) { userErrors { message } } }`
+    ).catch(() => {});
 
     // 6. Redirect into the embedded app and clear the state cookie
     const appUrl = `https://${shop}/admin/apps/${API_KEY}`;
