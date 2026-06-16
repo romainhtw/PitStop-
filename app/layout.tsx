@@ -3,6 +3,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import AppShell from "@/components/AppShell";
+import BillingGate from "@/components/BillingGate";
 
 export const metadata: Metadata = {
   title: "PitStop",
@@ -56,7 +57,9 @@ export default function RootLayout({
           }}
         />
         <AppShell />
-        <main className="lg:ml-56 min-h-screen">{children}</main>
+        <BillingGate>
+          <main className="lg:ml-56 min-h-screen">{children}</main>
+        </BillingGate>
       </body>
     </html>
   );
