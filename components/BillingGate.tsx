@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { apiFetch } from "@/lib/apiClient";
 
 type GateState = "checking" | "active" | "required";
@@ -10,11 +11,19 @@ interface BillingStatus {
   confirmationUrl?: string | null;
 }
 
+// Public, no-auth routes required by Shopify App Store review (privacy policy,
+// support). These must render WITHOUT App Bridge or the billing gate, since
+// they're opened outside the embedded admin iframe.
+const PUBLIC_PREFIXES = ["/privacy", "/support"];
+
 export default function BillingGate({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isPublic = !!pathname && PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
   const [state, setState] = useState<GateState>("checking");
   const [confirmationUrl, setConfirmationUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isPublic) return;
     let cancelled = false;
 
     async function check() {
@@ -48,7 +57,10 @@ export default function BillingGate({ children }: { children: React.ReactNode })
 
     check();
     return () => { cancelled = true; };
-  }, []);
+  }, [isPublic]);
+
+  // Public routes bypass the gate entirely.
+  if (isPublic) return <>{children}</>;
 
   if (state === "checking") {
     return (
