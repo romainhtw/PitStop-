@@ -43,6 +43,16 @@ export async function verifyShopifySessionToken(
 }
 
 /**
+ * Extracts the raw Bearer token from the Authorization header without
+ * verifying it. Returns null if the header is absent or malformed.
+ */
+export function getSessionTokenFromRequest(req: NextRequest): string | null {
+  const authHeader = req.headers.get("authorization") ?? "";
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : null;
+}
+
+/**
  * Extracts and verifies the Shopify session token from the
  * `Authorization: Bearer <token>` request header.
  * Returns the shop domain or null if missing / invalid.
@@ -50,8 +60,7 @@ export async function verifyShopifySessionToken(
 export async function getShopFromRequest(
   req: NextRequest
 ): Promise<string | null> {
-  const authHeader = req.headers.get("authorization") ?? "";
-  const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  if (!match) return null;
-  return verifyShopifySessionToken(match[1]);
+  const raw = getSessionTokenFromRequest(req);
+  if (!raw) return null;
+  return verifyShopifySessionToken(raw);
 }

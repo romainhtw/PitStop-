@@ -13,6 +13,7 @@ interface ShopDoc {
   scope: string;
   installedAt: string;
   uninstalledAt: string | null;
+  expiresAt?: number;
 }
 
 function tryEncrypt(token: string): string {
@@ -36,26 +37,28 @@ function tryDecrypt(stored: string): string {
 export async function saveShop(
   shop: string,
   accessToken: string,
-  scope: string
+  scope: string,
+  expiresAt?: number
 ): Promise<void> {
+  const payload: Record<string, unknown> = {
+    shop,
+    accessToken: tryEncrypt(accessToken),
+    scope,
+    installedAt: new Date().toISOString(),
+    uninstalledAt: null,
+  };
+  if (expiresAt !== undefined) {
+    payload.expiresAt = expiresAt;
+  }
   await adminDb
     .collection("shops")
     .doc(shop)
-    .set(
-      {
-        shop,
-        accessToken: tryEncrypt(accessToken),
-        scope,
-        installedAt: new Date().toISOString(),
-        uninstalledAt: null,
-      },
-      { merge: true }
-    );
+    .set(payload, { merge: true });
 }
 
 export async function getShop(
   shop: string
-): Promise<{ accessToken: string; scope: string } | null> {
+): Promise<{ accessToken: string; scope: string; expiresAt?: number } | null> {
   const snap = await adminDb.collection("shops").doc(shop).get();
   if (!snap.exists) return null;
 
@@ -65,6 +68,7 @@ export async function getShop(
   return {
     accessToken: tryDecrypt(data.accessToken),
     scope: data.scope,
+    expiresAt: data.expiresAt,
   };
 }
 
