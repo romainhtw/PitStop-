@@ -8,12 +8,6 @@ import BillingGate from "@/components/BillingGate";
 export const metadata: Metadata = {
   title: "PitStop",
   description: "Supplier invoices → accurate Shopify stock & costs, in minutes.",
-  manifest: "/manifest.webmanifest",
-  appleWebApp: {
-    capable: true,
-    title: "PitStop",
-    statusBarStyle: "black-translucent",
-  },
 };
 
 export const viewport: Viewport = {

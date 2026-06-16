@@ -468,10 +468,11 @@ export default function ReviewPurchaseOrderPage() {
     return { supplier, invoiceNumber, invoiceDate, currency, exchangeRate: currency !== "AUD" ? exchangeRate : undefined, taxVatNumber, orderNumber, location, paymentTerms, lineItems, shippingCost: Number(shippingCost) || 0, invoiceTotals, gstBase };
   }
 
-  // Session expired → bounce to login instead of showing a cryptic "UNAUTHORIZED"
-  function redirectToLoginIf401(res: Response): boolean {
+  // Session token expired (embedded app) → reload so App Bridge re-issues a
+  // fresh session token, instead of bouncing to a non-existent login page.
+  function reloadIfSessionExpired(res: Response): boolean {
     if (res.status === 401) {
-      window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`;
+      window.location.reload();
       return true;
     }
     return false;
@@ -493,7 +494,7 @@ export default function ReviewPurchaseOrderPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...buildPayload(), status }),
     });
-    if (redirectToLoginIf401(res)) throw new Error("Session expired — redirecting to login…");
+    if (reloadIfSessionExpired(res)) throw new Error("Session expired — reloading…");
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to save purchase order");
     return data as PurchaseOrder;
@@ -542,7 +543,7 @@ export default function ReviewPurchaseOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ poId: id, dryRun: true, overrides: confirmedMappings }),
       });
-      if (redirectToLoginIf401(res)) return;
+      if (reloadIfSessionExpired(res)) return;
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Preview failed");
       const result = data as SyncResult;
@@ -580,7 +581,7 @@ export default function ReviewPurchaseOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ poId: id, overrides: confirmedMappings }),
       });
-      if (redirectToLoginIf401(syncRes)) return;
+      if (reloadIfSessionExpired(syncRes)) return;
       const syncData = await syncRes.json();
       if (syncRes.status === 409 || syncData.duplicateInvoice) {
         setDuplicateInvoiceError(syncData.duplicateInvoice);
