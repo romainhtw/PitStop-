@@ -37,7 +37,8 @@ export async function verifyShopifySessionToken(
 
     // Strip "https://" prefix to return bare shop domain
     return dest.replace(/^https?:\/\//, "");
-  } catch {
+  } catch (e) {
+    console.error("[sessionToken] verify FAILED:", e instanceof Error ? e.message : e, "| API_KEY len:", (API_KEY||"").length, "| API_SECRET len:", (API_SECRET||"").length);
     return null;
   }
 }

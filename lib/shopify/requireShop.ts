@@ -31,11 +31,11 @@ const EXPIRY_BUFFER_MS = 60_000;
 export async function requireShop(req: NextRequest): Promise<string | null> {
   // 1. Extract raw session token from the Authorization header.
   const sessionToken = getSessionTokenFromRequest(req);
-  if (!sessionToken) return null;
+  if (!sessionToken) { console.error("[requireShop] NO session token in Authorization header"); return null; }
 
   // 2. Verify signature and derive shop domain.
   const shop = await verifyShopifySessionToken(sessionToken);
-  if (!shop) return null;
+  if (!shop) { console.error("[requireShop] session token present but verify returned null"); return null; }
 
   // 3. Load the current persisted record.
   const existing = await getShop(shop);
