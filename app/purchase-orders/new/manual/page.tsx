@@ -243,9 +243,9 @@ export default function ManualPurchaseOrderPage() {
           </table>
         </div>
         <datalist id="category-options">
-          <option value="Helmets" /><option value="Components" /><option value="Apparel" />
-          <option value="Accessories" /><option value="Bikes" /><option value="Footwear" />
-          <option value="Electronics" /><option value="Tools" /><option value="Nutrition" />
+          <option value="Apparel" /><option value="Accessories" /><option value="Footwear" />
+          <option value="Electronics" /><option value="Home & Garden" /><option value="Beauty" />
+          <option value="Food & Drink" /><option value="Tools" /><option value="Other" />
         </datalist>
       </div>
 

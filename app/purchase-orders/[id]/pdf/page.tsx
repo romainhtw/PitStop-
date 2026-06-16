@@ -99,10 +99,6 @@ export default function PurchaseOrderPdfPage() {
               PITSTOP
             </div>
             <div className="text-xs text-gray-400 tracking-widest uppercase">Purchase Order System</div>
-            <div className="mt-3 text-xs text-gray-500 leading-relaxed">
-              Perth, Western Australia<br />
-              hello@eliteracing.com.au
-            </div>
           </div>
           <div className="text-right">
             <div className="text-2xl font-bold text-gray-900 mb-1">PURCHASE ORDER</div>
