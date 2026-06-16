@@ -31,6 +31,18 @@ export default function BillingGate({ children }: { children: React.ReactNode })
         await new Promise((r) => setTimeout(r, 100));
       }
 
+      // Client-side App Bridge diagnostic
+      const w = globalThis as unknown as { shopify?: { idToken?: () => Promise<string> } };
+      const hasShopify = !!w.shopify;
+      const hasIdToken = typeof w.shopify?.idToken === "function";
+      const host = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("host") : null;
+      let tokLen = 0;
+      let tokErr = "";
+      if (hasIdToken) {
+        try { tokLen = (await w.shopify!.idToken!())?.length ?? 0; } catch (e) { tokErr = e instanceof Error ? e.message : String(e); }
+      }
+      const clientDiag = `shopify=${hasShopify} idToken=${hasIdToken} host=${host ? "yes" : "no"} tokLen=${tokLen}${tokErr ? " err=" + tokErr : ""}`;
+
       try {
         const res = await apiFetch("/api/shopify/billing/status");
         if (cancelled) return;
@@ -42,11 +54,11 @@ export default function BillingGate({ children }: { children: React.ReactNode })
           setState("active");
         } else {
           setConfirmationUrl(data.confirmationUrl ?? null);
-          setDebug(data.debug ?? data.error ?? "");
+          setDebug(`${data.debug ?? data.error ?? ""} | ${clientDiag}`);
           setState("required");
         }
       } catch {
-        if (!cancelled) setState("required");
+        if (!cancelled) { setDebug(`fetch_threw | ${clientDiag}`); setState("required"); }
       }
     }
 
