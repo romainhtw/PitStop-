@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PITSTOP DESIGN SYSTEM — TOKEN LAYER
+   Pitch Black canvas. Hair-thin borders. Safety Orange accent. Mono data.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --ps-canvas:    #000000;
+  --ps-surface-0: #000000;
+  --ps-surface-1: #0A0A0B;
+  --ps-surface-2: #111113;
+  --ps-surface-3: #18181B;
+
+  --ps-border-0: #1F1F22;
+  --ps-border-1: #2A2A2E;
+  --ps-border-2: #3A3A3F;
+
+  --ps-text-primary:   #F4F4F5;
+  --ps-text-secondary: #A1A1AA;
+  --ps-text-tertiary:  #52525B;
+  --ps-text-inverse:   #09090B;
+
+  /* Safety Orange — single accent, max 5% real estate */
+  --ps-accent:        #FF5A00;
+  --ps-accent-dim:    #CC4800;
+  --ps-accent-muted:  rgba(255, 90, 0, 0.08);
+  --ps-accent-border: rgba(255, 90, 0, 0.25);
+
+  /* Status — 2px left-bar + 1px border, never solid fills */
+  --ps-status-match:       #22C55E;
+  --ps-status-match-bg:    rgba(34, 197, 94, 0.07);
+  --ps-status-drift:       #EAB308;
+  --ps-status-drift-bg:    rgba(234, 179, 8, 0.07);
+  --ps-status-shortage:    #EF4444;
+  --ps-status-shortage-bg: rgba(239, 68, 68, 0.07);
+  --ps-status-new:         #8B5CF6;
+  --ps-status-new-bg:      rgba(139, 92, 246, 0.07);
+  --ps-status-pending:     #3B82F6;
+  --ps-status-pending-bg:  rgba(59, 130, 246, 0.07);
+
+  --ps-overlay: rgba(0, 0, 0, 0.75);
+  --ps-focus:   rgba(255, 90, 0, 0.45);
+}
+
+[data-theme="light"] {
+  --ps-canvas:    #FAFAFA;
+  --ps-surface-0: #FAFAFA;
+  --ps-surface-1: #FFFFFF;
+  --ps-surface-2: #F4F4F5;
+  --ps-surface-3: #E4E4E7;
+  --ps-border-0:  #E4E4E7;
+  --ps-border-1:  #D4D4D8;
+  --ps-border-2:  #A1A1AA;
+  --ps-text-primary:   #09090B;
+  --ps-text-secondary: #52525B;
+  --ps-text-tertiary:  #A1A1AA;
+  --ps-text-inverse:   #F4F4F5;
+  --ps-accent:        #E64D00;
+  --ps-accent-dim:    #B83D00;
+  --ps-accent-muted:  rgba(230, 77, 0, 0.06);
+  --ps-accent-border: rgba(230, 77, 0, 0.20);
+  --ps-overlay: rgba(250, 250, 250, 0.85);
+  --ps-focus:   rgba(230, 77, 0, 0.35);
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-color: var(--ps-canvas);
+  color: var(--ps-text-primary);
+  font-family: var(--font-geist-sans), Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/* Tabular numerics — zero layout shift on value updates */
+.data-num {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+/* Scrollbar — 4px, dark-native, no track */
+::-webkit-scrollbar             { width: 4px; height: 4px; }
+::-webkit-scrollbar-track       { background: transparent; }
+::-webkit-scrollbar-thumb       { background: var(--ps-border-1); }
+::-webkit-scrollbar-thumb:hover { background: var(--ps-border-2); }
+
+::selection {
+  background: var(--ps-accent-muted);
+  color: var(--ps-text-primary);
+}
+
+/* ── View mode overrides ────────────────────────────────────────────────── */
+html.force-mobile .lg\:ml-56 { margin-left: 0 !important; }
+html.force-mobile .lg\:hidden { display: block !important; }
+html.force-mobile .hidden.lg\:block { display: none !important; }
+html.force-mobile aside { transform: translateX(-100%) !important; display: flex !important; }
+html.force-mobile aside[data-open="true"] { transform: translateX(0) !important; }
+
+html.force-desktop .lg\:ml-56 { margin-left: 14rem !important; }
+html.force-desktop .lg\:hidden { display: none !important; }
+html.force-desktop aside { transform: translateX(0) !important; display: flex !important; }
+
+@media print {
+  aside, nav, header, [data-no-print] { display: none !important; }
+  main { margin-left: 0 !important; }
+  body { background: white !important; color: black !important; }
+  @page { margin: 15mm 15mm 15mm 15mm; size: A4; }
+}

@@ -1,0 +1,9 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "bucket": "pitstop-ea39d.firebasestorage.app",
+    "rules": "storage.rules"
+  }
+}

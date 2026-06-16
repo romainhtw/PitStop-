@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function tokenMerchantId() {
+      return request.auth.token.merchantId;
+    }
+
+    // Caller's JWT merchantId matches the document's merchantId field
+    function isReadingOwnTenant() {
+      return isSignedIn() && resource.data.merchantId == tokenMerchantId();
+    }
+
+    // Caller's JWT merchantId matches what they're trying to write
+    function isWritingOwnTenant() {
+      return isSignedIn() && request.resource.data.merchantId == tokenMerchantId();
+    }
+
+    function isOwner() {
+      return isSignedIn() && request.auth.token.role == 'owner';
+    }
+
+    function isOwnerOfTenant(merchantId) {
+      return isOwner() && tokenMerchantId() == merchantId;
+    }
+
+    // ── /merchants ────────────────────────────────────────────────────────────
+    // All mutations go through Admin SDK (server-only). Client may only GET
+    // their own merchant doc (for settings UI), but sensitive fields are
+    // stripped server-side before hydrating the client.
+    match /merchants/{merchantId} {
+      allow get:    if isOwnerOfTenant(merchantId);
+      allow list:   if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ── /purchaseOrders ───────────────────────────────────────────────────────
+    match /purchaseOrders/{poId} {
+      allow read:   if isReadingOwnTenant();
+      allow create: if isWritingOwnTenant();
+      allow update: if isReadingOwnTenant() && isWritingOwnTenant();
+      allow delete: if isReadingOwnTenant() && isOwner();
+    }
+
+    // ── /suppliers ────────────────────────────────────────────────────────────
+    match /suppliers/{supplierId} {
+      allow read:   if isReadingOwnTenant();
+      allow create: if isWritingOwnTenant();
+      allow update: if isReadingOwnTenant() && isWritingOwnTenant();
+      allow delete: if isReadingOwnTenant() && isOwner();
+    }
+
+    // ── /skuMappings ──────────────────────────────────────────────────────────
+    match /skuMappings/{mappingId} {
+      allow read:   if isReadingOwnTenant();
+      allow create: if isWritingOwnTenant();
+      allow update: if isReadingOwnTenant() && isWritingOwnTenant();
+      allow delete: if isReadingOwnTenant() && isOwner();
+    }
+
+    // ── /shopifyProducts ──────────────────────────────────────────────────────
+    // Written only by server-side sync (Admin SDK). Clients may read.
+    match /shopifyProducts/{productId} {
+      allow read:  if isReadingOwnTenant();
+      allow write: if false;
+    }
+
+    // ── /transfers ────────────────────────────────────────────────────────────
+    match /transfers/{transferId} {
+      allow read:   if isReadingOwnTenant();
+      allow create: if isWritingOwnTenant();
+      allow update: if isReadingOwnTenant() && isWritingOwnTenant();
+      allow delete: if false;
+    }
+
+    // ── /auditLogs ────────────────────────────────────────────────────────────
+    // Append-only from server. Clients may read their own logs.
+    match /auditLogs/{logId} {
+      allow read:  if isReadingOwnTenant();
+      allow write: if false;
+    }
+
+    // ── /stripeEvents ─────────────────────────────────────────────────────────
+    // Internal idempotency log — server-only.
+    match /stripeEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    // ── /oauthStates ──────────────────────────────────────────────────────────
+    // Shopify OAuth CSRF tokens — server-only.
+    match /oauthStates/{stateId} {
+      allow read, write: if false;
+    }
+
+    // ── Default deny ──────────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
