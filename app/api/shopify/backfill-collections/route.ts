@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { shopifyFetch } from "@/lib/shopify";
+import { requireShop } from "@/lib/shopify/requireShop";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -41,17 +42,18 @@ interface CollectionsData {
 }
 
 export async function GET(req: NextRequest) {
-  const merchantId = req.headers.get("x-merchant-id");
-  if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  const shop = await requireShop(req);
+  if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  const merchantId = shop;
+
   const cursor = req.nextUrl.searchParams.get("cursor") ?? undefined;
 
-  const result = await shopifyFetch<CollectionsData>(QUERY, cursor ? { cursor } : {});
+  const result = await shopifyFetch<CollectionsData>(shop, QUERY, cursor ? { cursor } : {});
   const products = result?.data?.products;
   if (!products) {
     return NextResponse.json({ error: "Shopify fetch failed" }, { status: 500 });
   }
 
-  // Build variantId → collections map for this page
   const variantCollections = new Map<string, string[]>();
   for (const { node: p } of products.edges) {
     const cols = p.collections.edges.map((e) => e.node.title);
@@ -60,11 +62,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Find matching Firestore docs and update
   if (variantCollections.size > 0) {
     const variantIds = Array.from(variantCollections.keys());
 
-    // Firestore "in" queries support up to 30 values — batch them
     const CHUNK = 30;
     const batches: Promise<void>[] = [];
 

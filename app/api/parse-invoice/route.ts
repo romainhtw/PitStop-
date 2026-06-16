@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { v4 as uuidv4 } from "uuid";
 import { waitUntil } from "@vercel/functions";
 import { adminDb } from "@/lib/firebaseAdmin";
+import { requireShop } from "@/lib/shopify/requireShop";
 import { recordInvoiceUsage, checkAndRecordFreeUsage } from "@/lib/stripe/usageTracking";
 import type { PurchaseOrder } from "@/lib/types";
 
@@ -36,8 +37,9 @@ export async function POST(req: NextRequest) {
   try {
     console.log("[parse-invoice] Request received");
 
-    const merchantId = req.headers.get("x-merchant-id");
-    if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const shop = await requireShop(req);
+    if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const merchantId = shop;
 
     // ── Free tier gate ────────────────────────────────────────────────────────
     const merchantSnap = await adminDb.collection("merchants").doc(merchantId).get();

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchInventoryLevels, batchAdjustInventory, toLocationGid } from "@/lib/shopify";
+import { requireShop } from "@/lib/shopify/requireShop";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -11,8 +12,10 @@ interface CommitItem {
 
 export async function POST(req: NextRequest) {
   try {
-    const merchantId = req.headers.get("x-merchant-id");
-    if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const shop = await requireShop(req);
+    if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const merchantId = shop;
+
     const { items, locationId }: { items: CommitItem[]; locationId: string } = await req.json();
 
     if (!items?.length) return NextResponse.json({ error: "No items provided" }, { status: 400 });
@@ -22,18 +25,16 @@ export async function POST(req: NextRequest) {
     const inventoryItemIds = items.map((i) => i.inventoryItemId);
 
     // Fetch LATEST live quantities from Shopify right before committing
-    // (critical: orders may have been placed during the count)
     const CHUNK = 250;
     const currentQtyMap = new Map<string, number>();
     for (let i = 0; i < inventoryItemIds.length; i += CHUNK) {
       const chunk = inventoryItemIds.slice(i, i + CHUNK);
-      const levels = await fetchInventoryLevels(chunk, locationGid);
+      const levels = await fetchInventoryLevels(shop, chunk, locationGid);
       for (const l of levels) {
         currentQtyMap.set(l.inventoryItemId, l.onHandQty);
       }
     }
 
-    // Calculate deltas — skip items with no change
     const changes: Array<{ inventoryItemId: string; locationId: string; delta: number; counted: number; previousQty: number }> = [];
     for (const item of items) {
       const previousQty = currentQtyMap.get(item.inventoryItemId) ?? 0;
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
     const referenceDocumentUri = `gid://${merchantId}/Stocktake/ST-${new Date().toISOString().slice(0, 10)}-${Date.now()}`;
 
     const { userErrors, groupId } = await batchAdjustInventory(
+      shop,
       changes.map((c) => ({ inventoryItemId: c.inventoryItemId, locationId: c.locationId, delta: c.delta })),
       "cycle_count_available",
       referenceDocumentUri

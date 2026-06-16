@@ -6,18 +6,17 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
-import { fetchVariantsPage, fetchInventoryLevels, toLocationGid } from "@/lib/shopify";
+import { fetchVariantsPage, fetchInventoryLevels, getPrimaryLocationGid } from "@/lib/shopify";
+import { requireShop } from "@/lib/shopify/requireShop";
 import type { ShopifyProduct } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 async function syncPage(req: NextRequest) {
-  const merchantId = req.headers.get("x-merchant-id");
-  if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  if (!process.env.SHOPIFY_STORE_DOMAIN || !process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
-    return NextResponse.json({ error: "Shopify credentials not configured" }, { status: 500 });
-  }
+  const shop = await requireShop(req);
+  if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  const merchantId = shop;
 
   const cursor = req.nextUrl.searchParams.get("cursor") ?? undefined;
   // Optional onboarding filter: only import variants in these collections (CSV of titles)
@@ -27,7 +26,7 @@ async function syncPage(req: NextRequest) {
     : null;
 
   // 1. One page of variants
-  const fetched = await fetchVariantsPage(cursor);
+  const fetched = await fetchVariantsPage(shop, cursor);
   const nextCursor = fetched.nextCursor;
   const syncedAt = new Date().toISOString();
 
@@ -41,24 +40,21 @@ async function syncPage(req: NextRequest) {
     return NextResponse.json({ processed: 0, done: nextCursor === null, nextCursor });
   }
 
-  // 2. Inventory levels for this page's items (both locations)
-  const storeGid = toLocationGid(process.env.SHOPIFY_LOCATION_ID_STORE);
-  const warehouseGid = toLocationGid(process.env.SHOPIFY_LOCATION_ID_WAREHOUSE);
+  // 2. Resolve the shop's primary active location
+  const locationGid = await getPrimaryLocationGid(shop);
+  if (!locationGid) {
+    return NextResponse.json({ error: "No active location found for this shop" }, { status: 500 });
+  }
+
   const inventoryItemIds = variants.map((v) => v.inventoryItemId);
-
   const storeMap = new Map<string, { onHandQty: number; unitCost: number | null }>();
-  const warehouseMap = new Map<string, number>();
 
-  // Chunk into 250s (Shopify nodes() limit) — one page rarely exceeds this but be safe
+  // Chunk into 250s (Shopify nodes() limit)
   const CHUNK = 250;
   for (let i = 0; i < inventoryItemIds.length; i += CHUNK) {
     const chunk = inventoryItemIds.slice(i, i + CHUNK);
-    const [storeLevels, warehouseLevels] = await Promise.all([
-      storeGid ? fetchInventoryLevels(chunk, storeGid) : Promise.resolve([]),
-      warehouseGid ? fetchInventoryLevels(chunk, warehouseGid) : Promise.resolve([]),
-    ]);
-    for (const l of storeLevels) storeMap.set(l.inventoryItemId, { onHandQty: l.onHandQty, unitCost: l.unitCost });
-    for (const l of warehouseLevels) warehouseMap.set(l.inventoryItemId, l.onHandQty);
+    const levels = await fetchInventoryLevels(shop, chunk, locationGid);
+    for (const l of levels) storeMap.set(l.inventoryItemId, { onHandQty: l.onHandQty, unitCost: l.unitCost });
   }
 
   // 3. Write this page
@@ -72,7 +68,7 @@ async function syncPage(req: NextRequest) {
       merchantId,
       syncedAt,
       onHandQtyStore: storeLevel?.onHandQty ?? 0,
-      onHandQtyWarehouse: warehouseMap.get(v.inventoryItemId) ?? 0,
+      onHandQtyWarehouse: 0,
       unitCost: storeLevel?.unitCost ?? null,
     };
     const docId = v.variantId.split("/").pop()!;

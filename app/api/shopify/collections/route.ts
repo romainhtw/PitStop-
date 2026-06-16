@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { shopifyFetch } from "@/lib/shopify";
+import { requireShop } from "@/lib/shopify/requireShop";
 
 export const runtime = "nodejs";
 
@@ -28,18 +29,15 @@ interface CollectionsData {
 }
 
 export async function GET(req: NextRequest) {
-  const merchantId = req.headers.get("x-merchant-id");
-  if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  if (!process.env.SHOPIFY_STORE_DOMAIN || !process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
-    return NextResponse.json({ error: "Shopify credentials not configured" }, { status: 500 });
-  }
+  const shop = await requireShop(req);
+  if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
 
   try {
     const collections: Array<{ title: string; count: number }> = [];
     let cursor: string | undefined;
     let guard = 0;
     for (;;) {
-      const page = await shopifyFetch<CollectionsData>(QUERY, cursor ? { cursor } : {});
+      const page = await shopifyFetch<CollectionsData>(shop, QUERY, cursor ? { cursor } : {});
       const data = page?.data?.collections;
       if (!data) break;
       for (const c of data.nodes) {

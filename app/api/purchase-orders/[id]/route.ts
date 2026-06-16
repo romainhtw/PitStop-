@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
 import type { PurchaseOrder } from "@/lib/types";
-import { adjustInventory, updateInventoryItemCost, toLocationGid } from "@/lib/shopify";
+import { adjustInventory, updateInventoryItemCost, getPrimaryLocationGid } from "@/lib/shopify";
+import { requireShop } from "@/lib/shopify/requireShop";
 
 export const runtime = "nodejs";
 
@@ -10,8 +11,10 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const merchantId = req.headers.get("x-merchant-id");
-    if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const shop = await requireShop(req);
+    if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const merchantId = shop;
+
     const snap = await adminDb.collection("purchaseOrders").doc(params.id).get();
     if (!snap.exists) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -32,8 +35,10 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const merchantId = req.headers.get("x-merchant-id");
-    if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const shop = await requireShop(req);
+    if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const merchantId = shop;
+
     const body = (await req.json()) as Partial<PurchaseOrder>;
     const ref = adminDb.collection("purchaseOrders").doc(params.id);
     const existing = await ref.get();
@@ -69,8 +74,10 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const merchantId = req.headers.get("x-merchant-id");
-    if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const shop = await requireShop(req);
+    if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const merchantId = shop;
+
     const ref = adminDb.collection("purchaseOrders").doc(params.id);
     const snap = await ref.get();
 
@@ -83,17 +90,14 @@ export async function DELETE(
         (r) => r.status === "synced" && r.inventoryItemId && r.delta
       );
 
-      if (syncedItems.length > 0 && process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
-        const rawLocationId =
-          po.location === "In-Store Fitzgerald St"
-            ? process.env.SHOPIFY_LOCATION_ID_STORE
-            : process.env.SHOPIFY_LOCATION_ID_WAREHOUSE;
-        const locationGid = toLocationGid(rawLocationId);
+      if (syncedItems.length > 0) {
+        // Resolve the shop's primary location for reversal
+        const locationGid = await getPrimaryLocationGid(shop);
 
         if (locationGid) {
-          // 1. Reverse quantities — keep using adjustInventory per synced item
+          // 1. Reverse quantities
           const qtyReversals = await Promise.allSettled(
-            syncedItems.map((r) => adjustInventory(r.inventoryItemId!, locationGid, -(r.delta!)))
+            syncedItems.map((r) => adjustInventory(shop, r.inventoryItemId!, locationGid, -(r.delta!)))
           );
           const qtyFailed = qtyReversals.filter((r) => r.status === "rejected");
           if (qtyFailed.length > 0) {
@@ -103,13 +107,11 @@ export async function DELETE(
             );
           }
 
-          // 2. Restore costs from costSnapshot (product-level reversal).
-          //    If snapshot exists, restore exact pre-PO cost for each inventoryItemId.
-          //    Wrap in allSettled so a cost failure does not abort the delete.
+          // 2. Restore costs from costSnapshot
           if (po.costSnapshot && Object.keys(po.costSnapshot).length > 0) {
             await Promise.allSettled(
               Object.entries(po.costSnapshot).map(([invId, prevCost]) =>
-                updateInventoryItemCost(invId, prevCost)
+                updateInventoryItemCost(shop, invId, prevCost)
               )
             );
           }

@@ -1,8 +1,6 @@
-const API_VERSION = "2025-04";
+import { getShop } from "@/lib/shopify/shops";
 
-export function shopifyGraphqlUrl(): string {
-  return `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/${API_VERSION}/graphql.json`;
-}
+const API_VERSION = "2025-04";
 
 // Full-jitter exponential backoff: sleep random(0, min(cap_ms, base_ms * 2^attempt))
 function jitterDelay(attempt: number, baseMs = 500, capMs = 8000): Promise<void> {
@@ -12,16 +10,22 @@ function jitterDelay(attempt: number, baseMs = 500, capMs = 8000): Promise<void>
 }
 
 export async function shopifyFetch<T = unknown>(
+  shop: string,
   query: string,
   variables?: Record<string, unknown>,
   maxRetries = 4
 ): Promise<{ data?: T; errors?: Array<{ message: string }> }> {
+  const s = await getShop(shop);
+  if (!s) throw new Error("SHOP_NOT_INSTALLED");
+
+  const url = `https://${shop}/admin/api/${API_VERSION}/graphql.json`;
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const res = await fetch(shopifyGraphqlUrl(), {
+    const res = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!,
+        "X-Shopify-Access-Token": s.accessToken,
       },
       body: JSON.stringify({ query, variables }),
     });
@@ -61,6 +65,23 @@ export function toLocationGid(envVal: string | undefined): string {
   return envVal.startsWith("gid://")
     ? envVal
     : `gid://shopify/Location/${envVal}`;
+}
+
+const PRIMARY_LOCATION_QUERY = /* GraphQL */ `
+  query GetPrimaryLocation {
+    locations(first: 1, query: "status:active") {
+      nodes { id }
+    }
+  }
+`;
+
+interface PrimaryLocationData {
+  locations: { nodes: Array<{ id: string }> };
+}
+
+export async function getPrimaryLocationGid(shop: string): Promise<string | null> {
+  const result = await shopifyFetch<PrimaryLocationData>(shop, PRIMARY_LOCATION_QUERY);
+  return result?.data?.locations?.nodes?.[0]?.id ?? null;
 }
 
 export const FIND_VARIANT_QUERY = /* GraphQL */ `
@@ -151,6 +172,7 @@ export interface BatchAdjustChange {
 }
 
 export async function batchAdjustInventory(
+  shop: string,
   changes: BatchAdjustChange[],
   reason: string,
   referenceDocumentUri: string
@@ -163,7 +185,7 @@ export async function batchAdjustInventory(
 
   for (let i = 0; i < changes.length; i += CHUNK) {
     const chunk = changes.slice(i, i + CHUNK);
-    const result = await shopifyFetch<BatchAdjustData>(BATCH_ADJUST_MUTATION, {
+    const result = await shopifyFetch<BatchAdjustData>(shop, BATCH_ADJUST_MUTATION, {
       input: { name: "available", reason, referenceDocumentUri, changes: chunk },
     });
     const data = result?.data?.inventoryAdjustQuantities;
@@ -220,6 +242,7 @@ interface FindVariantData {
 }
 
 export async function findVariantBySku(
+  shop: string,
   sku: string,
   locationGid?: string
 ): Promise<ShopifyVariantNode | null> {
@@ -230,7 +253,7 @@ export async function findVariantBySku(
   for (const searchField of [`sku:${sku}`, `barcode:${sku}`]) {
     const variables: Record<string, string> = { query: searchField };
     if (locationGid) variables.locationId = locationGid;
-    const result = await shopifyFetch<FindVariantData>(query, variables);
+    const result = await shopifyFetch<FindVariantData>(shop, query, variables);
     const edges = result?.data?.productVariants?.edges ?? [];
     if (edges.length > 0) return edges[0].node;
   }
@@ -295,8 +318,8 @@ function extractCoreModel(name: string): string {
   return core.slice(0, 4).join(" ");
 }
 
-export async function fetchVariantsByQuery(q: string): Promise<ShopifyVariantNode[]> {
-  const result = await shopifyFetch<SearchProductsData>(SEARCH_BY_TITLE_QUERY, { q });
+export async function fetchVariantsByQuery(shop: string, q: string): Promise<ShopifyVariantNode[]> {
+  const result = await shopifyFetch<SearchProductsData>(shop, SEARCH_BY_TITLE_QUERY, { q });
   const products = result?.data?.products?.nodes ?? [];
   const variants: ShopifyVariantNode[] = [];
   for (const p of products) {
@@ -313,7 +336,7 @@ export async function fetchVariantsByQuery(q: string): Promise<ShopifyVariantNod
   return variants;
 }
 
-export async function searchVariantsByTitle(name: string): Promise<ShopifyVariantNode[]> {
+export async function searchVariantsByTitle(shop: string, name: string): Promise<ShopifyVariantNode[]> {
   if (!name) return [];
 
   const coreQuery = extractCoreModel(name);
@@ -321,8 +344,8 @@ export async function searchVariantsByTitle(name: string): Promise<ShopifyVarian
 
   // Search with title: prefix (exact match), then without (broader)
   const [exact, broad] = await Promise.all([
-    fetchVariantsByQuery(`title:${coreQuery}`),
-    fetchVariantsByQuery(coreQuery),
+    fetchVariantsByQuery(shop, `title:${coreQuery}`),
+    fetchVariantsByQuery(shop, coreQuery),
   ]);
 
   // Merge, deduplicate by variantId, cap at 10
@@ -339,7 +362,6 @@ export async function searchVariantsByTitle(name: string): Promise<ShopifyVarian
 }
 
 // Full catalog: active + draft + archived (no status restriction).
-// Client requirement — Jack needs to count/order products regardless of Shopify status.
 export const CATALOG_QUERY = /* GraphQL */ `
   query GetProducts($cursor: String) {
     products(first: 250, after: $cursor, query: "status:active OR status:draft OR status:archived") {
@@ -427,10 +449,11 @@ export interface CatalogVariant {
 
 /** Fetch ONE page (250 products) of catalog variants. Used by the paginated sync to stay under the 60s serverless limit. */
 export async function fetchVariantsPage(
+  shop: string,
   cursor?: string
 ): Promise<{ variants: CatalogVariant[]; nextCursor: string | null }> {
   const vars: Record<string, unknown> = cursor ? { cursor } : {};
-  const page: { data?: CatalogData } = await shopifyFetch<CatalogData>(CATALOG_QUERY, vars);
+  const page: { data?: CatalogData } = await shopifyFetch<CatalogData>(shop, CATALOG_QUERY, vars);
   const products = page?.data?.products;
   if (!products) return { variants: [], nextCursor: null };
 
@@ -458,11 +481,11 @@ export async function fetchVariantsPage(
   return { variants, nextCursor: products.pageInfo.hasNextPage ? products.pageInfo.endCursor : null };
 }
 
-export async function fetchAllVariants(): Promise<CatalogVariant[]> {
+export async function fetchAllVariants(shop: string): Promise<CatalogVariant[]> {
   const all: CatalogVariant[] = [];
   let cursor: string | undefined;
   for (;;) {
-    const { variants, nextCursor } = await fetchVariantsPage(cursor);
+    const { variants, nextCursor } = await fetchVariantsPage(shop, cursor);
     all.push(...variants);
     if (!nextCursor) break;
     cursor = nextCursor;
@@ -497,11 +520,13 @@ interface AdjustInventoryData {
 }
 
 export async function adjustInventory(
+  shop: string,
   inventoryItemId: string,
   locationId: string,
   delta: number
 ): Promise<{ userErrors: Array<{ field: string; message: string }> }> {
   const result = await shopifyFetch<AdjustInventoryData>(
+    shop,
     ADJUST_INVENTORY_MUTATION,
     {
       input: {
@@ -561,11 +586,13 @@ export interface InventoryLevelResult {
 }
 
 export async function fetchInventoryLevels(
+  shop: string,
   inventoryItemIds: string[],
   locationGid: string
 ): Promise<InventoryLevelResult[]> {
   if (inventoryItemIds.length === 0) return [];
   const result = await shopifyFetch<FetchInventoryLevelsData>(
+    shop,
     FETCH_INVENTORY_LEVELS_QUERY,
     { ids: inventoryItemIds, locationId: locationGid }
   );
@@ -591,8 +618,8 @@ interface CheckLocationData {
   location: { id: string; isActive: boolean; fulfillsOnlineOrders: boolean } | null;
 }
 
-export async function checkLocation(locationGid: string): Promise<{ isActive: boolean; fulfillsOnlineOrders: boolean; checked: boolean }> {
-  const result = await shopifyFetch<CheckLocationData>(CHECK_LOCATION_QUERY, { id: locationGid });
+export async function checkLocation(shop: string, locationGid: string): Promise<{ isActive: boolean; fulfillsOnlineOrders: boolean; checked: boolean }> {
+  const result = await shopifyFetch<CheckLocationData>(shop, CHECK_LOCATION_QUERY, { id: locationGid });
   const loc = result?.data?.location;
   // If loc is null (e.g. token lacks read_locations scope), treat as unverifiable — don't block sync
   if (!loc) return { isActive: false, fulfillsOnlineOrders: false, checked: false };
@@ -631,6 +658,7 @@ export interface BatchSetItem {
 }
 
 export async function batchSetInventory(
+  shop: string,
   items: BatchSetItem[],
   locationGid: string,
   referenceDocumentUri: string
@@ -644,7 +672,7 @@ export async function batchSetInventory(
 
   for (let i = 0; i < items.length; i += CHUNK) {
     const chunk = items.slice(i, i + CHUNK);
-    const result = await shopifyFetch<SetInventoryData>(SET_INVENTORY_BATCH_MUTATION, {
+    const result = await shopifyFetch<SetInventoryData>(shop, SET_INVENTORY_BATCH_MUTATION, {
       input: {
         name: "on_hand",
         reason: "received",
@@ -653,21 +681,17 @@ export async function batchSetInventory(
           inventoryItemId: it.inventoryItemId,
           locationId: locationGid,
           quantity: it.quantity,
-          // Shopify's field is `compareQuantity` (compare-and-set). The old name
-          // `changeFromQuantity` is invalid here → Shopify errored silently.
           compareQuantity: it.changeFromQuantity,
         })),
       },
     });
-    // Surface top-level GraphQL errors too — not just userErrors — so a rejected
-    // write can never be reported as success.
+    // Surface top-level GraphQL errors too
     if (result?.errors?.length) {
       allErrors.push(...result.errors.map((e) => ({ field: "", message: e.message })));
     }
     const data = result?.data?.inventorySetQuantities;
     if (data?.userErrors?.length) allErrors.push(...data.userErrors);
     if (data?.inventoryAdjustmentGroup?.id) groupId = data.inventoryAdjustmentGroup.id;
-    // No adjustment group + no errors = nothing actually happened → flag it
     if (!data?.inventoryAdjustmentGroup?.id && !(data?.userErrors?.length) && !(result?.errors?.length)) {
       allErrors.push({ field: "", message: "Shopify did not confirm the inventory update (no adjustment created)." });
     }
@@ -686,10 +710,11 @@ const UPDATE_ITEM_COST_MUTATION = /* GraphQL */ `
 `;
 
 export async function updateInventoryItemCost(
+  shop: string,
   inventoryItemId: string,
   cost: number
 ): Promise<void> {
-  await shopifyFetch(UPDATE_ITEM_COST_MUTATION, {
+  await shopifyFetch(shop, UPDATE_ITEM_COST_MUTATION, {
     id: inventoryItemId,
     input: { cost: cost.toFixed(4) },
   });
@@ -741,11 +766,12 @@ export interface TransferChange {
 }
 
 export async function moveInventory(
+  shop: string,
   changes: TransferChange[]
 ): Promise<{ userErrors: Array<{ field: string; message: string }>; groupId?: string }> {
   if (changes.length === 0) return { userErrors: [] };
 
-  const result = await shopifyFetch<MoveInventoryData>(MOVE_INVENTORY_MUTATION, {
+  const result = await shopifyFetch<MoveInventoryData>(shop, MOVE_INVENTORY_MUTATION, {
     input: {
       reason: "correction",
       changes: changes.map((c) => ({

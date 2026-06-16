@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { shopifyFetch } from "@/lib/shopify";
+import { requireShop } from "@/lib/shopify/requireShop";
 
 export const runtime = "nodejs";
 
@@ -55,14 +56,14 @@ const GET_PRODUCTS_QUERY = /* GraphQL */ `
   }
 `;
 
-async function fetchAllProducts(): Promise<ShopifyProductNode[]> {
+async function fetchAllProducts(shop: string): Promise<ShopifyProductNode[]> {
   const all: ShopifyProductNode[] = [];
   let cursor: string | null = null;
   let hasNextPage = true;
 
   while (hasNextPage) {
     const response: { data?: GetProductsData; errors?: Array<{ message: string }> } =
-      await shopifyFetch<GetProductsData>(GET_PRODUCTS_QUERY, { cursor });
+      await shopifyFetch<GetProductsData>(shop, GET_PRODUCTS_QUERY, { cursor });
 
     if (response.errors && response.errors.length > 0) {
       throw new Error(response.errors.map((e: { message: string }) => e.message).join("; "));
@@ -79,21 +80,13 @@ async function fetchAllProducts(): Promise<ShopifyProductNode[]> {
   return all;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    if (
-      !process.env.SHOPIFY_STORE_DOMAIN ||
-      !process.env.SHOPIFY_ADMIN_ACCESS_TOKEN
-    ) {
-      return NextResponse.json(
-        { error: "Shopify credentials not configured" },
-        { status: 500 }
-      );
-    }
+    const shop = await requireShop(req);
+    if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
 
-    const products = await fetchAllProducts();
+    const products = await fetchAllProducts(shop);
 
-    // Group by normalized title
     const groupMap = new Map<
       string,
       Array<{ productId: string; title: string; variantId: string; price: number }>
@@ -120,7 +113,6 @@ export async function GET() {
       groupMap.get(normalizedTitle)!.push(entry);
     }
 
-    // Build groups — only where 2+ products AND price variance > 0
     const groups: PriceGroup[] = [];
 
     for (const [normalizedTitle, entries] of Array.from(groupMap.entries())) {
@@ -160,7 +152,6 @@ export async function GET() {
       });
     }
 
-    // Sort by spread descending
     groups.sort((a, b) => b.spread - a.spread);
 
     return NextResponse.json({

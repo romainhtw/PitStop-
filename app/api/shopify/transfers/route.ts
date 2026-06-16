@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { moveInventory, toLocationGid } from "@/lib/shopify";
 import { adminDb } from "@/lib/firebaseAdmin";
+import { requireShop } from "@/lib/shopify/requireShop";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -27,6 +28,8 @@ export interface TransferRecord {
   error?: string;
 }
 
+// Cut-feature: location IDs still come from env here (transfers are not yet multi-tenant).
+// Replace with getPrimaryLocationGid when this feature is revived.
 function locationGid(loc: TransferLocation): string {
   if (loc === "In-Store Fitzgerald St") {
     return toLocationGid(process.env.SHOPIFY_LOCATION_ID_STORE);
@@ -36,8 +39,10 @@ function locationGid(loc: TransferLocation): string {
 
 export async function GET(req: NextRequest) {
   try {
-    const merchantId = req.headers.get("x-merchant-id");
-    if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const shop = await requireShop(req);
+    if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const merchantId = shop;
+
     const snap = await adminDb
       .collection("transfers")
       .where("merchantId", "==", merchantId)
@@ -56,8 +61,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const merchantId = req.headers.get("x-merchant-id");
-    if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const shop = await requireShop(req);
+    if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const merchantId = shop;
+
     const body = await req.json() as {
       fromLocation: TransferLocation;
       toLocation: TransferLocation;
@@ -90,7 +97,7 @@ export async function POST(req: NextRequest) {
       quantity: item.qty,
     }));
 
-    const { userErrors, groupId } = await moveInventory(changes);
+    const { userErrors, groupId } = await moveInventory(shop, changes);
 
     const id = uuidv4();
     const now = new Date().toISOString();

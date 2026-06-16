@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { shopifyFetch } from "@/lib/shopify";
+import { requireShop } from "@/lib/shopify/requireShop";
 
 export const runtime = "nodejs";
 
@@ -21,15 +22,8 @@ const UPDATE_VARIANT_PRICE_MUTATION = /* GraphQL */ `
 
 export async function POST(req: NextRequest) {
   try {
-    if (
-      !process.env.SHOPIFY_STORE_DOMAIN ||
-      !process.env.SHOPIFY_ADMIN_ACCESS_TOKEN
-    ) {
-      return NextResponse.json(
-        { error: "Shopify credentials not configured" },
-        { status: 500 }
-      );
-    }
+    const shop = await requireShop(req);
+    if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
 
     const body = (await req.json()) as {
       updates: { variantId: string; price: number }[];
@@ -49,6 +43,7 @@ export async function POST(req: NextRequest) {
     for (const { variantId, price } of body.updates) {
       try {
         const result = await shopifyFetch<UpdateVariantPriceData>(
+          shop,
           UPDATE_VARIANT_PRICE_MUTATION,
           {
             input: {

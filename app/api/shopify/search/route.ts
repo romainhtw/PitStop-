@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { shopifyFetch } from "@/lib/shopify";
+import { requireShop } from "@/lib/shopify/requireShop";
 import type { VariantSuggestion } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -84,37 +85,30 @@ function relevanceScore(productTitle: string, query: string): number {
 }
 
 export async function GET(req: NextRequest) {
+  const shop = await requireShop(req);
+  if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+
   const q = req.nextUrl.searchParams.get("q")?.trim();
   if (!q) return NextResponse.json({ variants: [] });
-
-  if (!process.env.SHOPIFY_STORE_DOMAIN || !process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
-    return NextResponse.json({ error: "Shopify not configured" }, { status: 500 });
-  }
 
   try {
     const words = q.split(/\s+/).filter((w) => w.length > 1);
 
-    // Build title queries — always scoped to title: to avoid tag/description noise
     const titleQueries: string[] = [`title:${q}`];
 
-    // Multi-word: also search with each meaningful word separately (catches partial matches)
     if (words.length > 1) {
-      // AND: all words must appear in title
       const andQuery = words.map((w) => `title:${w}`).join(" ");
       titleQueries.push(andQuery);
     } else if (words.length === 1 && q.length >= 3) {
-      // Single word: also try without title: prefix but still field-scoped
       titleQueries.push(`title:${q}*`);
     }
 
-    // Fetch all searches in parallel
     const [titleResults, skuResults, barcodeResults] = await Promise.all([
-      Promise.all(titleQueries.map((tq) => shopifyFetch<ProductTitleData>(PRODUCT_TITLE_QUERY, { q: tq }))),
-      shopifyFetch<VariantCodeData>(VARIANT_CODE_QUERY, { q: `sku:${q}` }),
-      shopifyFetch<VariantCodeData>(VARIANT_CODE_QUERY, { q: `barcode:${q}` }),
+      Promise.all(titleQueries.map((tq) => shopifyFetch<ProductTitleData>(shop, PRODUCT_TITLE_QUERY, { q: tq }))),
+      shopifyFetch<VariantCodeData>(shop, VARIANT_CODE_QUERY, { q: `sku:${q}` }),
+      shopifyFetch<VariantCodeData>(shop, VARIANT_CODE_QUERY, { q: `barcode:${q}` }),
     ]);
 
-    // Collect scored variants from title searches
     const scored: Array<{ variant: VariantSuggestion; score: number }> = [];
     const seen = new Set<string>();
 
@@ -138,13 +132,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Collect SKU/barcode matches (high priority — direct code hit)
     for (const edge of [...(skuResults?.data?.productVariants?.edges ?? []), ...(barcodeResults?.data?.productVariants?.edges ?? [])]) {
       const v = edge.node;
       if (seen.has(v.id)) continue;
       seen.add(v.id);
       scored.push({
-        score: 95, // SKU/barcode match is very confident
+        score: 95,
         variant: {
           variantId: v.id,
           inventoryItemId: v.inventoryItem.id,
@@ -155,7 +148,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Sort by score descending, cap at 15
     scored.sort((a, b) => b.score - a.score);
     const variants = scored.slice(0, 15).map((s) => ({ ...s.variant, score: s.score }));
 

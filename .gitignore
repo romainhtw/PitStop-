@@ -43,3 +43,5 @@ next-env.d.ts
 
 # Internal docs
 PITSTOP_FEATURES.md
+
+.vercel

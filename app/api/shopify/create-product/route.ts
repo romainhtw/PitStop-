@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { shopifyFetch } from "@/lib/shopify";
+import { requireShop } from "@/lib/shopify/requireShop";
 
 export const runtime = "nodejs";
 
@@ -51,9 +52,8 @@ interface UpdateVariantData {
 }
 
 export async function POST(req: NextRequest) {
-  if (!process.env.SHOPIFY_STORE_DOMAIN || !process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
-    return NextResponse.json({ error: "Shopify not configured" }, { status: 500 });
-  }
+  const shop = await requireShop(req);
+  if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
 
   const body = (await req.json()) as {
     title: string;
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
   };
   if (body.productType) productInput.productType = body.productType;
 
-  const created = await shopifyFetch<CreateProductData>(CREATE_PRODUCT_MUTATION, { input: productInput });
+  const created = await shopifyFetch<CreateProductData>(shop, CREATE_PRODUCT_MUTATION, { input: productInput });
 
   const createErrors = created?.data?.productCreate?.userErrors ?? [];
   if (createErrors.length > 0) {
@@ -95,12 +95,11 @@ export async function POST(req: NextRequest) {
   };
   if (body.barcode) variantInput.barcode = body.barcode;
 
-  const updated = await shopifyFetch<UpdateVariantData>(UPDATE_VARIANT_MUTATION, {
+  const updated = await shopifyFetch<UpdateVariantData>(shop, UPDATE_VARIANT_MUTATION, {
     productId: product.id,
     variants: [variantInput],
   });
   const updErrors = updated?.data?.productVariantsBulkUpdate?.userErrors ?? [];
-  // Non-fatal: the product exists; surface variant-update issues but still return the match
   if (updErrors.length > 0) {
     console.error("[create-product] variant update errors:", updErrors);
   }

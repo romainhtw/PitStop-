@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
+import { requireShop } from "@/lib/shopify/requireShop";
 import type { SupplierProfile } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -19,8 +20,9 @@ export async function GET(
   { params }: { params: { name: string } }
 ) {
   try {
-    const merchantId = req.headers.get("x-merchant-id");
-    if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const shop = await requireShop(req);
+    if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const merchantId = shop;
     const docId = supplierDocId(merchantId, params.name);
     let snap = await adminDb.collection("suppliers").doc(docId).get();
 
@@ -51,8 +53,9 @@ export async function PUT(
   { params }: { params: { name: string } }
 ) {
   try {
-    const merchantId = req.headers.get("x-merchant-id");
-    if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const shop = await requireShop(req);
+    if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const merchantId = shop;
     const body = await req.json() as Partial<SupplierProfile>;
     const nameKey = supplierNameKey(params.name);
     const docId   = supplierDocId(merchantId, params.name);

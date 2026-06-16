@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
+import { requireShop } from "@/lib/shopify/requireShop";
 import { getFreeTierUsage, PLAN_QUOTAS, PLAN_NAMES } from "@/lib/stripe/usageTracking";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  const merchantId = req.headers.get("x-merchant-id");
-  if (!merchantId) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  const shop = await requireShop(req);
+  if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  const merchantId = shop;
 
   const merchantSnap = await adminDb.collection("merchants").doc(merchantId).get();
   const plan: string = merchantSnap.exists
