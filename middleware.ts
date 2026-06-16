@@ -4,7 +4,7 @@ import { jwtVerify, type JWTPayload } from "jose";
 // ── Route classification ─────────────────────────────────────────────────────
 const WEBHOOK_RE    = /^\/api\/(billing\/webhook|shopify\/webhooks|stripe\/webhook)/;
 const STATIC_RE     = /^\/(_next|favicon\.ico|logo\.png|public|icon|apple-icon|icons\/|manifest\.webmanifest)/;
-const AUTH_RE       = /^\/(login|register|onboarding|signup|pricing|api\/auth|api\/onboarding|api\/merchants\/signup)/;
+const AUTH_RE       = /^\/(login|register|onboarding|signup|pricing|api\/auth|api\/onboarding|api\/merchants\/signup|api\/shopify\/auth)/;
 const OWNER_ONLY_RE = /^\/(billing|settings|api-keys|api\/merchants|api\/billing)/;
 
 // ── JWT payload shape ────────────────────────────────────────────────────────

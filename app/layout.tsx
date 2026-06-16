@@ -33,6 +33,15 @@ export default function RootLayout({
             __html: `(function(){var t=localStorage.getItem('ps-theme');document.documentElement.setAttribute('data-theme',t||'dark');})();`,
           }}
         />
+        {/* Shopify App Bridge v4 — harmless on non-embedded pages */}
+        <meta
+          name="shopify-api-key"
+          content={process.env.NEXT_PUBLIC_SHOPIFY_API_KEY ?? ""}
+        />
+        <script
+          src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
+          async
+        />
       </head>
       <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
         {/* Orange halo — fixed overlay, pointer-events off so it never blocks clicks */}

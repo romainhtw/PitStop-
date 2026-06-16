@@ -1,0 +1,16 @@
+name = "PitStop"
+client_id = "REPLACE_WITH_API_KEY"
+application_url = "https://REPLACE.vercel.app"
+embedded = true
+
+[access_scopes]
+scopes = "read_products,read_locations,write_inventory"
+
+[auth]
+redirect_urls = [ "https://REPLACE.vercel.app/api/shopify/auth/callback" ]
+
+[webhooks]
+api_version = "2025-04"
+
+[pos]
+embedded = false
