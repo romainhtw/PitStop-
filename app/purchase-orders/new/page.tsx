@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/apiClient";
 import BackButton from "@/components/BackButton";
 
 const STEPS = [
@@ -89,7 +90,7 @@ export default function NewPurchaseOrderPage() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch("/api/merchants/usage")
+    apiFetch("/api/merchants/usage")
       .then((r) => r.json())
       .then(setUsage)
       .catch(() => {});
@@ -108,7 +109,7 @@ export default function NewPurchaseOrderPage() {
       try {
         const fd = new FormData();
         fd.append("file", file);
-        const res = await fetch("/api/parse-invoice", { method: "POST", body: fd });
+        const res = await apiFetch("/api/parse-invoice", { method: "POST", body: fd });
 
         let data: Record<string, unknown>;
         try {

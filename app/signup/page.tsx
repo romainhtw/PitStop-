@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/apiClient";
 
 export default function SignupPage() {
   const [shopName, setShopName]   = useState("");
@@ -18,7 +19,7 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/merchants/signup", {
+      const res = await apiFetch("/api/merchants/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ shopName, ownerName, email, ownerPin, staffPin }),

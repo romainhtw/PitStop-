@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import { collection, getDocs, query, orderBy } from "firebase/firestore/lite";
 import { db } from "@/lib/firebase";
@@ -47,7 +48,7 @@ function DeleteButton({ po, onDelete }: { po: PurchaseOrder; onDelete: (id: stri
   async function handleDelete() {
     setDeleting(true);
     setDeleteError(null);
-    const res = await fetch(`/api/purchase-orders/${po.id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/purchase-orders/${po.id}`, { method: "DELETE" });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setDeleteError(data.error || "Delete failed");
@@ -133,7 +134,7 @@ export default function DashboardPage() {
   const [reusing, setReusing] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/purchase-orders")
+    apiFetch("/api/purchase-orders")
       .then((r) => r.json())
       .then((data) => setOrders(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
@@ -151,7 +152,7 @@ export default function DashboardPage() {
   async function handleReuse(po: PurchaseOrder) {
     setReusing(po.id);
     try {
-      const res = await fetch("/api/purchase-orders", {
+      const res = await apiFetch("/api/purchase-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

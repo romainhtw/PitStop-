@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadCatalog } from "@/lib/catalogCache";
+import { apiFetch } from "@/lib/apiClient";
 import type { ShopifyProduct } from "@/lib/types";
 import type { TransferItem, TransferLocation, TransferRecord } from "@/app/api/shopify/transfers/route";
 
@@ -56,7 +57,7 @@ export default function TransfersPage() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const res = await fetch("/api/shopify/transfers");
+      const res = await apiFetch("/api/shopify/transfers");
       const data = await res.json() as TransferRecord[];
       setHistory(Array.isArray(data) ? data : []);
     } catch {
@@ -143,7 +144,7 @@ export default function TransfersPage() {
         name: d.name + (d.variantTitle && d.variantTitle !== "Default Title" ? ` — ${d.variantTitle}` : ""),
         qty: d.qty,
       }));
-      const res = await fetch("/api/shopify/transfers", {
+      const res = await apiFetch("/api/shopify/transfers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fromLocation, toLocation, items }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { apiFetch } from "@/lib/apiClient";
 
 interface Message {
   role: "user" | "assistant";
@@ -55,7 +56,7 @@ export default function FeedbackChat({ context, buttonLabel = "Help" }: Feedback
     ]);
 
     try {
-      const res = await fetch("/api/build-chat", {
+      const res = await apiFetch("/api/build-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: payload, context }),

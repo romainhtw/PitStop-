@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/apiClient";
 import { v4 as uuidv4 } from "uuid";
 import BackButton from "@/components/BackButton";
 import ProductPicker from "@/components/ProductPicker";
@@ -100,7 +101,7 @@ export default function ManualPurchaseOrderPage() {
     };
 
     try {
-      const res = await fetch("/api/purchase-orders", {
+      const res = await apiFetch("/api/purchase-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(po),

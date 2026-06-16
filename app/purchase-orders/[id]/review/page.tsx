@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/apiClient";
 import BackButton from "@/components/BackButton";
 import ShopifyConfigModal from "@/components/ShopifyConfigModal";
 import ProductPicker from "@/components/ProductPicker";
@@ -159,7 +160,7 @@ export default function ReviewPurchaseOrderPage() {
 
   useEffect(() => {
     // Discover caller's merchantId via middleware-verified session
-    fetch("/api/auth/me")
+    apiFetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { merchantId?: string } | null) => {
         if (data?.merchantId) setMerchantId(data.merchantId);
@@ -181,7 +182,7 @@ export default function ReviewPurchaseOrderPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/purchase-orders/${id}`);
+        const res = await apiFetch(`/api/purchase-orders/${id}`);
         if (!res.ok) throw new Error("Purchase order not found");
         const po = await res.json() as PurchaseOrder;
 
@@ -230,7 +231,7 @@ export default function ReviewPurchaseOrderPage() {
         // Load supplier notes if available
         if (po.supplier) {
           const key = encodeURIComponent(po.supplier.toLowerCase().trim());
-          const suppRes = await fetch(`/api/suppliers/${key}`);
+          const suppRes = await apiFetch(`/api/suppliers/${key}`);
           if (suppRes.ok) {
             const supp = await suppRes.json();
             if (supp.parseHints) {
@@ -390,7 +391,7 @@ export default function ReviewPurchaseOrderPage() {
     setMarkingOrdered(true);
     setError(null);
     try {
-      const res = await fetch(`/api/purchase-orders/${id}`, {
+      const res = await apiFetch(`/api/purchase-orders/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...buildPayload(), status: "ordered", orderedAt: new Date().toISOString() }),
@@ -410,7 +411,7 @@ export default function ReviewPurchaseOrderPage() {
     if (!q) return;
     setManualSearching((prev) => ({ ...prev, [lineItemId]: true }));
     try {
-      const res = await fetch(`/api/shopify/search?q=${encodeURIComponent(q)}`);
+      const res = await apiFetch(`/api/shopify/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       setManualSearchResults((prev) => ({ ...prev, [lineItemId]: data.variants ?? [] }));
     } finally {
@@ -437,7 +438,7 @@ export default function ReviewPurchaseOrderPage() {
     if (!form?.title?.trim()) return;
     setCreating((prev) => ({ ...prev, [lineItemId]: true }));
     try {
-      const res = await fetch("/api/shopify/create-product", {
+      const res = await apiFetch("/api/shopify/create-product", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -495,7 +496,7 @@ export default function ReviewPurchaseOrderPage() {
   async function saveSupplierNotes() {
     if (!supplier) return;
     const key = encodeURIComponent(supplier.toLowerCase().trim());
-    await fetch(`/api/suppliers/${key}`, {
+    await apiFetch(`/api/suppliers/${key}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: supplier, parseHints: supplierNotes, defaultLocation: location }),
@@ -503,7 +504,7 @@ export default function ReviewPurchaseOrderPage() {
   }
 
   async function putPO(status: PurchaseOrder["status"]) {
-    const res = await fetch(`/api/purchase-orders/${id}`, {
+    const res = await apiFetch(`/api/purchase-orders/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...buildPayload(), status }),
@@ -552,7 +553,7 @@ export default function ReviewPurchaseOrderPage() {
   async function ensureShopifyConfigured(action: "preview" | "sync"): Promise<boolean> {
     if (!merchantId) return true; // legacy single-tenant session — let the API handle it
     try {
-      const res = await fetch(`/api/merchants/${merchantId}/config-status`);
+      const res = await apiFetch(`/api/merchants/${merchantId}/config-status`);
       if (!res.ok) return true; // fail-open: don't block on a transient error
       const data = await res.json() as { configured?: boolean };
       if (data.configured) return true;
@@ -570,7 +571,7 @@ export default function ReviewPurchaseOrderPage() {
     setError(null);
     try {
       await Promise.all([putPO("awaiting_review"), saveSupplierNotes()]);
-      const res = await fetch("/api/shopify/sync", {
+      const res = await apiFetch("/api/shopify/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ poId: id, dryRun: true, overrides: confirmedMappings }),
@@ -609,7 +610,7 @@ export default function ReviewPurchaseOrderPage() {
     setDuplicateInvoiceError(null);
     setConflictItems([]);
     try {
-      const syncRes = await fetch("/api/shopify/sync", {
+      const syncRes = await apiFetch("/api/shopify/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ poId: id, overrides: confirmedMappings }),

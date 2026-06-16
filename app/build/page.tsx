@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { apiFetch } from "@/lib/apiClient";
 
 interface Feature {
   id: string;
@@ -263,7 +264,7 @@ export default function BuildPage() {
     setMessages([...displayMessages, { role: "assistant", content: "" }]);
 
     try {
-      const res = await fetch("/api/build-chat", {
+      const res = await apiFetch("/api/build-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: apiMessages }),

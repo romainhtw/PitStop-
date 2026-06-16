@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { apiFetch } from "@/lib/apiClient";
 import type { PurchaseOrder } from "@/lib/types";
 
 function fmt(n: number) {
@@ -24,7 +25,7 @@ export default function PurchaseOrderPdfPage() {
 
   useEffect(() => {
     if (!params.id) return;
-    fetch(`/api/purchase-orders/${params.id}`)
+    apiFetch(`/api/purchase-orders/${params.id}`)
       .then((r) => r.json())
       .then((data: PurchaseOrder | { error: string }) => {
         if ("error" in data) setError(data.error);

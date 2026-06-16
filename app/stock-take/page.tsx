@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ShopifyProduct } from "@/lib/types";
+import { apiFetch } from "@/lib/apiClient";
 import { loadCatalog } from "@/lib/catalogCache";
 import { loadEntries, saveEntry, clearAllEntries, syncCatalogToLocal, lookupByCode, lookupInMemory } from "@/lib/stockTakeDb";
 import BarcodeScanner, { type ScanResult } from "@/components/BarcodeScanner";
@@ -215,7 +216,7 @@ export default function StockTakePage() {
         .filter((p) => entries[p.variantId]?.done)
         .map((p) => ({ inventoryItemId: p.inventoryItemId, counted: entries[p.variantId].counted }));
 
-      const res = await fetch("/api/shopify/stocktake/commit", {
+      const res = await apiFetch("/api/shopify/stocktake/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items, locationId }),

@@ -1,5 +1,6 @@
 import Dexie, { type Table } from "dexie";
 import type { ShopifyProduct } from "@/lib/types";
+import { apiFetch } from "@/lib/apiClient";
 
 /**
  * Catalog cache — instant on every login.
@@ -39,7 +40,7 @@ let memTs = 0;
 let revalidating = false;
 
 async function fetchFresh(): Promise<ShopifyProduct[]> {
-  const res = await fetch("/api/shopify/catalog");
+  const res = await apiFetch("/api/shopify/catalog");
   if (!res.ok) throw new Error("Failed to load catalog");
   const products = (await res.json() as ShopifyProduct[]).sort((a, b) =>
     a.productTitle.localeCompare(b.productTitle)

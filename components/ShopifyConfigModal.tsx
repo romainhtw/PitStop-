@@ -8,6 +8,7 @@
  * then calls onSuccess() so the parent can resume the sync.
  */
 import { useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/apiClient";
 
 export interface ShopifyConfigModalProps {
   merchantId: string;
@@ -55,7 +56,7 @@ export default function ShopifyConfigModal({ merchantId, onSuccess, onClose }: S
 
     setBusy(true);
     try {
-      const res = await fetch("/api/merchants/config", {
+      const res = await apiFetch("/api/merchants/config", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({

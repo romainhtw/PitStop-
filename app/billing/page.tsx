@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
+import { apiFetch } from "@/lib/apiClient";
 import { useSearchParams } from "next/navigation";
 
 interface BillingStatus {
@@ -145,8 +146,8 @@ function BillingContent() {
     async function load() {
       try {
         const [statusRes, referralRes] = await Promise.all([
-          fetch("/api/billing/status"),
-          fetch("/api/billing/referral/status"),
+          apiFetch("/api/billing/status"),
+          apiFetch("/api/billing/referral/status"),
         ]);
         const statusData = await statusRes.json() as BillingStatus;
         setStatus(statusData);
@@ -170,7 +171,7 @@ function BillingContent() {
     setActionLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/billing/checkout", {
+      const res = await apiFetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan, referralCode: referralInput || undefined }),
@@ -188,7 +189,7 @@ function BillingContent() {
     setActionLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/billing/portal", { method: "POST" });
+      const res = await apiFetch("/api/billing/portal", { method: "POST" });
       const data = await res.json() as { url?: string; error?: string };
       if (data.error) throw new Error(data.error);
       if (data.url) window.location.href = data.url;
@@ -201,7 +202,7 @@ function BillingContent() {
   async function handleGenerateReferralCode() {
     setGeneratingCode(true);
     try {
-      const res = await fetch("/api/billing/referral/generate", { method: "POST" });
+      const res = await apiFetch("/api/billing/referral/generate", { method: "POST" });
       const data = await res.json() as ReferralStatus & { error?: string };
       if (data.error) throw new Error(data.error);
       setReferral(data);

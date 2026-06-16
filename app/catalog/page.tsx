@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ShopifyProduct } from "@/lib/types";
 import { loadCatalog, invalidateCache } from "@/lib/catalogCache";
+import { apiFetch } from "@/lib/apiClient";
 
 type SortKey = "productTitle" | "onHand" | "unitCost" | "price" | "margin";
 type SortDir = "asc" | "desc";
@@ -63,7 +64,7 @@ export default function CatalogPage() {
     if (collections.length === 0) {
       setCollectionsLoading(true);
       try {
-        const res = await fetch("/api/shopify/collections");
+        const res = await apiFetch("/api/shopify/collections");
         const data = await res.json();
         if (res.ok && Array.isArray(data.collections)) setCollections(data.collections);
       } catch { /* non-fatal */ } finally {
@@ -210,7 +211,7 @@ export default function CatalogPage() {
         const url = cursor
           ? `${base}?cursor=${encodeURIComponent(cursor)}${colParam}`
           : colParam ? `${base}?${colParam.slice(1)}` : base;
-        const res = await fetch(url, { method: "GET" });
+        const res = await apiFetch(url, { method: "GET" });
         const text = await res.text();
         let data: { processed?: number; done?: boolean; nextCursor?: string | null; error?: string };
         try { data = JSON.parse(text); } catch { throw new Error(text.slice(0, 300) || `HTTP ${res.status}`); }
@@ -241,7 +242,7 @@ export default function CatalogPage() {
       let page = 0;
       for (;;) {
         const url = "/api/shopify/backfill-collections" + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : "");
-        const res = await fetch(url);
+        const res = await apiFetch(url);
         const data = await res.json() as { processed?: number; done?: boolean; nextCursor?: string | null; error?: string };
         if (!res.ok || data.error) throw new Error(data.error || "Backfill failed");
         total += data.processed ?? 0;
@@ -264,7 +265,7 @@ export default function CatalogPage() {
     setRegistering(true);
     setError(null);
     try {
-      const res = await fetch("/api/shopify/webhooks/register", { method: "POST" });
+      const res = await apiFetch("/api/shopify/webhooks/register", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed");
       const allOk = data.results.every((r: { success: boolean }) => r.success);

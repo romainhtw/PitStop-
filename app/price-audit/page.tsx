@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { PriceGroup } from "@/app/api/shopify/price-audit/route";
+import { apiFetch } from "@/lib/apiClient";
 import type { ShopifyProduct } from "@/lib/types";
 import { loadCatalog } from "@/lib/catalogCache";
 import FeedbackChat from "@/components/FeedbackChat";
@@ -104,7 +105,7 @@ export default function PriceAuditPage() {
     setApplied(new Set());
 
     try {
-      const res = await fetch("/api/shopify/price-audit");
+      const res = await apiFetch("/api/shopify/price-audit");
       const data = await res.json();
 
       if (!res.ok) {
@@ -138,7 +139,7 @@ export default function PriceAuditPage() {
         .filter((p) => (fixZeroOnly ? p.price === 0 : true))
         .map((p) => ({ variantId: p.variantId, price: targetPrice }));
 
-      const res = await fetch("/api/shopify/price-audit/normalize", {
+      const res = await apiFetch("/api/shopify/price-audit/normalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ updates }),
