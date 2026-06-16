@@ -19,10 +19,10 @@ const nextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              // Firebase, Stripe, and Anthropic APIs
-              "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://api.stripe.com https://api.anthropic.com",
-              // Scripts: self + Stripe.js
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com",
+              // Firebase, Anthropic, and Shopify Admin (App Bridge) APIs
+              "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://api.anthropic.com https://cdn.shopify.com https://admin.shopify.com https://*.myshopify.com",
+              // Scripts: self + Shopify App Bridge (must be allowed or window.shopify never loads)
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.shopify.com",
               // Styles: self + inline (Tailwind inlines styles)
               "style-src 'self' 'unsafe-inline'",
               // Images: self + data URIs (for any base64 encoded images)
@@ -33,8 +33,8 @@ const nextConfig = {
               "worker-src 'self' blob:",
               // Media (video element for barcode scanner)
               "media-src 'self' blob:",
-              // Frame sources for Stripe
-              "frame-src https://js.stripe.com https://hooks.stripe.com",
+              // Frames: none needed (no Stripe; billing is handled by Shopify redirect)
+              "frame-src 'none'",
               // Allow Shopify Admin to embed this app in an iframe
               "frame-ancestors https://admin.shopify.com https://*.myshopify.com",
               // Object/embed
