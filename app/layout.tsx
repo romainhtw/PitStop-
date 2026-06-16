@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
-import AppShell from "@/components/AppShell";
+import NavMenu from "@/components/NavMenu";
 import BillingGate from "@/components/BillingGate";
 
 export const metadata: Metadata = {
@@ -55,9 +55,10 @@ export default function RootLayout({
             boxShadow: "inset 0 0 120px 20px rgba(255,90,0,0.08)",
           }}
         />
-        <AppShell />
+        {/* Native Admin navigation (App Bridge) — renders in Shopify's own sidebar */}
+        <NavMenu />
         <BillingGate>
-          <main className="lg:ml-56 min-h-screen">{children}</main>
+          <main className="min-h-screen">{children}</main>
         </BillingGate>
       </body>
     </html>
