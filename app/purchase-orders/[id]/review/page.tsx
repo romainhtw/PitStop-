@@ -655,7 +655,7 @@ export default function ReviewPurchaseOrderPage() {
       <div className="mb-4"><BackButton /></div>
       <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="font-display text-4xl leading-none tracking-wide text-accent mb-1">Review Purchase Order</h1>
+          <h1 className="text-2xl font-sans font-semibold tracking-tight text-text-primary mb-0.5">Review Purchase Order</h1>
           <p className="text-text-secondary text-sm">
             Check the extracted details, fix anything incorrect, then save or sync directly to Shopify.
           </p>

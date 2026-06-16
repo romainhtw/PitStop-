@@ -126,7 +126,7 @@ export default function ManualPurchaseOrderPage() {
         />
       )}
       <div className="mb-4"><BackButton /></div>
-      <h1 className="font-display text-4xl leading-none tracking-wide text-accent mb-1">New Purchase Order</h1>
+      <h1 className="text-2xl font-sans font-semibold tracking-tight text-text-primary mb-0.5">New Purchase Order</h1>
       <p className="text-text-secondary text-sm mb-1">Enter order details manually — no invoice upload needed.</p>
       <p className="text-sm mb-8">
         <span className="text-text-tertiary">Have the supplier invoice? </span>

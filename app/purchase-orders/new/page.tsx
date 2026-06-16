@@ -111,7 +111,7 @@ export default function NewPurchaseOrderPage() {
   return (
     <div className="p-10 max-w-4xl">
       <div className="mb-4"><BackButton /></div>
-      <h1 className="font-display text-4xl leading-none tracking-wide text-text-primary mb-2">
+      <h1 className="text-2xl font-sans font-semibold tracking-tight text-text-primary mb-2">
         New Purchase Order
       </h1>
       <p className="text-text-secondary mb-2 text-sm">

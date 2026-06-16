@@ -35,7 +35,7 @@ export default function AuditPage() {
   return (
     <div className="p-6 lg:p-10 max-w-5xl">
       <div className="mb-8">
-        <h1 className="font-display text-4xl leading-none tracking-wide text-accent mb-1">Sync Audit Trail</h1>
+        <h1 className="text-2xl font-sans font-semibold tracking-tight text-text-primary mb-0.5">Sync Audit Trail</h1>
         <p className="text-text-secondary text-sm">Every inventory sync event, newest first. Last 100 entries.</p>
       </div>
 
