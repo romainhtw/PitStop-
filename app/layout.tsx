@@ -36,25 +36,16 @@ export default function RootLayout({
           content={process.env.NEXT_PUBLIC_SHOPIFY_API_KEY ?? ""}
         />
         <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js" />
-        {/* Inline script prevents FOUC — applies dark theme before first paint */}
+        {/* Inline script prevents FOUC — applies the theme before first paint.
+            Default is LIGHT to match the Shopify Admin chrome (embedded apps
+            should feel native); honours a stored preference if one exists. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){var t=localStorage.getItem('ps-theme');document.documentElement.setAttribute('data-theme',t||'dark');})();`,
+            __html: `(function(){var t=localStorage.getItem('ps-theme');document.documentElement.setAttribute('data-theme',t||'light');})();`,
           }}
         />
       </head>
       <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
-        {/* Orange halo — fixed overlay, pointer-events off so it never blocks clicks */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            pointerEvents: "none",
-            zIndex: 9999,
-            boxShadow: "inset 0 0 120px 20px rgba(255,90,0,0.08)",
-          }}
-        />
         {/* Native Admin navigation (App Bridge) — renders in Shopify's own sidebar */}
         <NavMenu />
         <BillingGate>
