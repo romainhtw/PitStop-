@@ -9,11 +9,13 @@ interface BillingStatus {
   active: boolean;
   confirmationUrl?: string | null;
   error?: string;
+  debug?: string;
 }
 
 export default function BillingGate({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<GateState>("checking");
   const [confirmationUrl, setConfirmationUrl] = useState<string | null>(null);
+  const [debug, setDebug] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -33,19 +35,14 @@ export default function BillingGate({ children }: { children: React.ReactNode })
         const res = await apiFetch("/api/shopify/billing/status");
         if (cancelled) return;
 
-        if (!res.ok) {
-          // Non-2xx — deny access rather than crash
-          setState("required");
-          return;
-        }
-
-        const data: BillingStatus = await res.json();
+        const data: BillingStatus = res.ok ? await res.json() : { active: false, debug: `HTTP_${res.status}` };
         if (cancelled) return;
 
         if (data.active) {
           setState("active");
         } else {
           setConfirmationUrl(data.confirmationUrl ?? null);
+          setDebug(data.debug ?? data.error ?? "");
           setState("required");
         }
       } catch {
@@ -129,6 +126,11 @@ export default function BillingGate({ children }: { children: React.ReactNode })
       ) : (
         <p style={{ margin: 0, opacity: 0.6 }}>
           Couldn&apos;t start billing — refresh to retry.
+        </p>
+      )}
+      {debug && (
+        <p style={{ margin: 0, marginTop: "0.5rem", fontSize: "0.75rem", opacity: 0.5, fontFamily: "monospace" }}>
+          diag: {debug}
         </p>
       )}
     </div>
