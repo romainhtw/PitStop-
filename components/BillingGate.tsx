@@ -21,11 +21,11 @@ export default function BillingGate({ children }: { children: React.ReactNode })
     let cancelled = false;
 
     async function check() {
-      // Wait for window.shopify to exist (App Bridge v4), max ~3 s
-      const deadline = Date.now() + 3000;
+      // Wait for App Bridge v4 to expose shopify.idToken (max ~5 s)
+      const deadline = Date.now() + 5000;
       while (
         typeof window !== "undefined" &&
-        !(globalThis as unknown as { shopify?: unknown }).shopify &&
+        typeof (globalThis as unknown as { shopify?: { idToken?: () => Promise<string> } }).shopify?.idToken !== "function" &&
         Date.now() < deadline
       ) {
         await new Promise((r) => setTimeout(r, 100));

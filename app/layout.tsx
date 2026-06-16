@@ -28,20 +28,19 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Shopify App Bridge v4 — MUST be the first <head> entries, loaded
+            synchronously (no async/defer) so window.shopify + idToken() are
+            ready before app code runs. */}
+        <meta
+          name="shopify-api-key"
+          content={process.env.NEXT_PUBLIC_SHOPIFY_API_KEY ?? ""}
+        />
+        <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js" />
         {/* Inline script prevents FOUC — applies dark theme before first paint */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){var t=localStorage.getItem('ps-theme');document.documentElement.setAttribute('data-theme',t||'dark');})();`,
           }}
-        />
-        {/* Shopify App Bridge v4 — harmless on non-embedded pages */}
-        <meta
-          name="shopify-api-key"
-          content={process.env.NEXT_PUBLIC_SHOPIFY_API_KEY ?? ""}
-        />
-        <script
-          src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
-          async
         />
       </head>
       <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
