@@ -40,7 +40,11 @@ export async function shopifyFetch<T = unknown>(
     }
 
     if (!res.ok) {
-      throw new Error(`Shopify API error: ${res.status} ${res.statusText}`);
+      // Shopify puts the real reason in the body (e.g. scope/billing/approval).
+      // Surface a trimmed version so the cause is visible instead of a bare status.
+      let body = "";
+      try { body = (await res.text()).slice(0, 200).replace(/\s+/g, " ").trim(); } catch { /* ignore */ }
+      throw new Error(`Shopify API error: ${res.status} ${res.statusText}${body ? ` — ${body}` : ""}`);
     }
 
     const json = await res.json() as { data?: T; errors?: Array<{ message: string; extensions?: { code?: string } }> };
