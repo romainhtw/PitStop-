@@ -79,7 +79,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-base font-semibold text-text-primary mb-2">Contact</h2>
             <p>
-              Questions or data requests: <a className="text-accent underline" href="mailto:support@arc-labs.com.au">support@arc-labs.com.au</a>.
+              Questions or data requests: <a className="text-accent underline" href="mailto:romain@arc-labs.com.au">romain@arc-labs.com.au</a>.
             </p>
           </section>
         </div>

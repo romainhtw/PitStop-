@@ -20,6 +20,3 @@ api_version = "2025-04"
   customer_data_request_url = "https://pitstop-shopify.vercel.app/api/shopify/webhooks/customers-data-request"
   customer_deletion_url = "https://pitstop-shopify.vercel.app/api/shopify/webhooks/customers-redact"
   shop_deletion_url = "https://pitstop-shopify.vercel.app/api/shopify/webhooks/shop-redact"
-
-[pos]
-embedded = false

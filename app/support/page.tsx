@@ -23,8 +23,8 @@ export default function SupportPage() {
             <h2 className="text-base font-semibold text-text-primary mb-2">Contact us</h2>
             <p>
               Email{" "}
-              <a className="text-accent underline" href="mailto:support@arc-labs.com.au">
-                support@arc-labs.com.au
+              <a className="text-accent underline" href="mailto:romain@arc-labs.com.au">
+                romain@arc-labs.com.au
               </a>{" "}
               and we&rsquo;ll get back to you within 1 business day. Please include your store name and a short
               description of the issue.
