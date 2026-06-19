@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { shopifyFetch } from "@/lib/shopify";
+import { shopifyFetch, getPrimaryLocationGid } from "@/lib/shopify";
 import { requireShop } from "@/lib/shopify/requireShop";
 
 export const runtime = "nodejs";
@@ -32,6 +32,25 @@ const UPDATE_VARIANT_MUTATION = /* GraphQL */ `
     }
   }
 `;
+
+// Activates the new inventory item at a location so the variant is actually
+// stocked and shows up in inventory. Without this, a tracked variant is not
+// stocked anywhere and never appears in inventory (and later set/adjust fails).
+const INVENTORY_ACTIVATE_MUTATION = /* GraphQL */ `
+  mutation InventoryActivate($inventoryItemId: ID!, $locationId: ID!) {
+    inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId) {
+      inventoryLevel { id }
+      userErrors { field message }
+    }
+  }
+`;
+
+interface InventoryActivateData {
+  inventoryActivate: {
+    inventoryLevel: { id: string } | null;
+    userErrors: Array<{ field: string; message: string }>;
+  };
+}
 
 interface CreateProductData {
   productCreate: {
@@ -104,9 +123,25 @@ export async function POST(req: NextRequest) {
     console.error("[create-product] variant update errors:", updErrors);
   }
 
+  // ── Step 3: stock the item at the primary location so it appears in inventory ──
+  const inventoryItemId = variant.inventoryItem.id;
+  const locationGid = await getPrimaryLocationGid(shop);
+  if (locationGid) {
+    const activated = await shopifyFetch<InventoryActivateData>(shop, INVENTORY_ACTIVATE_MUTATION, {
+      inventoryItemId,
+      locationId: locationGid,
+    });
+    const actErrors = activated?.data?.inventoryActivate?.userErrors ?? [];
+    if (actErrors.length > 0) {
+      console.error("[create-product] inventory activate errors:", actErrors);
+    }
+  } else {
+    console.error("[create-product] no primary location found — item not stocked");
+  }
+
   return NextResponse.json({
     variantId: variant.id,
-    inventoryItemId: variant.inventoryItem.id,
+    inventoryItemId,
     productTitle: product.title,
   });
 }
