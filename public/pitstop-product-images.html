@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>PitStop — visuels produits par couleur</title>
+<style>
+  body{margin:0;background:#18181b;color:#e4e4e7;font-family:system-ui,Segoe UI,Arial,sans-serif;
+       display:flex;flex-direction:column;align-items:center;gap:18px;padding:32px}
+  h1{font-size:18px;font-weight:600;margin:0}
+  p{margin:0;opacity:.7;font-size:13px;text-align:center;max-width:600px}
+  .grid{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;max-width:920px}
+  .card{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .thumb{width:180px;height:180px;border-radius:14px;overflow:hidden;background:#F4F4F5;box-shadow:0 8px 26px rgba(0,0,0,.4)}
+  .thumb svg{width:100%;height:100%;display:block}
+  button{background:#FF5A00;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer}
+  .name{font-size:12px;opacity:.85}
+  .all{margin-top:6px}
+  .hint{font-size:12px;opacity:.55;max-width:600px;text-align:center;line-height:1.6}
+</style>
+</head>
+<body>
+  <h1>Visuels produits par couleur (1200×1200 PNG)</h1>
+  <p>Une image par coloris. Télécharge-les, uploade-les sur le bon produit, puis assigne chaque image à sa variante de couleur (voir note en bas).</p>
+  <div class="grid" id="grid"></div>
+  <button class="all" onclick="dlAll()">⬇️ Tout télécharger</button>
+  <div class="hint">
+    Assignation dans Shopify : ouvre le produit → section <b>Variants</b> → clique une variante (ou groupe par <b>Color</b>) → champ <b>Image</b> → choisis l'image de cette couleur. Pas de texte à écrire : c'est une assignation visuelle. Toutes les tailles d'une couleur partagent la même image.
+  </div>
+
+<script>
+function tee(fill, shade, stroke){
+  return `<rect width="240" height="240" fill="#F4F4F5"/>
+    <path d="M72,62 L96,52 C108,66 132,66 144,52 L168,62 L196,96 L176,120 L160,106 L160,196 L80,196 L80,106 L64,120 L44,96 Z" fill="${fill}" ${stroke?`stroke="${stroke}" stroke-width="2"`:''}/>
+    <path d="M96,52 C108,66 132,66 144,52 L150,57 C133,73 107,73 90,57 Z" fill="${shade}"/>
+    <path d="M160,106 L160,196 L146,196 L146,112 Z" fill="#000" opacity="0.10"/>`;
+}
+function sweat(fill, shade, stroke){
+  return `<rect width="240" height="240" fill="#F4F4F5"/>
+    <path d="M70,60 L98,50 C110,66 130,66 142,50 L170,60 L200,98 L180,126 L162,110 L162,188 L78,188 L78,110 L60,126 L40,98 Z" fill="${fill}" ${stroke?`stroke="${stroke}" stroke-width="2"`:''}/>
+    <path d="M98,50 C110,66 130,66 142,50 L150,58 C132,76 108,76 90,58 Z" fill="${shade}"/>
+    <rect x="78" y="186" width="84" height="14" rx="3" fill="${shade}"/>
+    <rect x="168" y="116" width="16" height="12" rx="3" fill="${shade}"/>
+    <rect x="56" y="116" width="16" height="12" rx="3" fill="${shade}"/>
+    <path d="M162,110 L162,188 L150,188 L150,116 Z" fill="#000" opacity="0.10"/>`;
+}
+function beanie(fill, brim, rib){
+  return `<rect width="240" height="240" fill="#F4F4F5"/>
+    <path d="M64,156 C64,84 176,84 176,156 Z" fill="${fill}"/>
+    <rect x="58" y="150" width="124" height="34" rx="14" fill="${brim}"/>
+    <g stroke="${rib}" stroke-width="3" opacity="0.5">
+      <line x1="80" y1="152" x2="80" y2="182"/><line x1="100" y1="152" x2="100" y2="182"/>
+      <line x1="120" y1="152" x2="120" y2="182"/><line x1="140" y1="152" x2="140" y2="182"/>
+      <line x1="160" y1="152" x2="160" y2="182"/>
+    </g>`;
+}
+
+const items = [
+  {file:'tee-black.png',      name:'Tee — Black',      svg: tee('#1c1c1f','#2c2c31', null)},
+  {file:'tee-white.png',      name:'Tee — White',      svg: tee('#ffffff','#ededf0', '#d4d4d8')},
+  {file:'sweatshirt-navy.png',name:'Sweatshirt — Navy',svg: sweat('#1e3a5f','#16314f', null)},
+  {file:'sweatshirt-grey.png',name:'Sweatshirt — Grey',svg: sweat('#6b7280','#565d68', null)},
+  {file:'beanie-black.png',   name:'Beanie — Black',   svg: beanie('#1c1c1f','#2c2c31','#000')},
+  {file:'beanie-charcoal.png',name:'Beanie — Charcoal',svg: beanie('#3f3f46','#52525b','#2c2c31')},
+];
+
+const grid = document.getElementById('grid');
+items.forEach((it,i)=>{
+  const card=document.createElement('div'); card.className='card';
+  card.innerHTML=`<div class="thumb"><svg id="svg${i}" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">${it.svg}</svg></div>
+    <span class="name">${it.name}</span>
+    <button onclick="dl(${i})">⬇️ ${it.file}</button>`;
+  grid.appendChild(card);
+});
+
+function rasterize(i, cb){
+  const svg=document.getElementById('svg'+i);
+  const xml=new XMLSerializer().serializeToString(svg);
+  const url='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(xml)));
+  const img=new Image();
+  img.onload=function(){
+    const c=document.createElement('canvas'); c.width=1200; c.height=1200;
+    const ctx=c.getContext('2d');
+    ctx.fillStyle='#F4F4F5'; ctx.fillRect(0,0,1200,1200);
+    ctx.drawImage(img,0,0,1200,1200);
+    c.toBlob(cb,'image/png');
+  };
+  img.src=url;
+}
+function dl(i){ rasterize(i, function(b){ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=items[i].file; a.click(); URL.revokeObjectURL(a.href);}); }
+function dlAll(){ items.forEach((_,i)=>setTimeout(()=>dl(i), i*350)); }
+</script>
+</body>
+</html>
