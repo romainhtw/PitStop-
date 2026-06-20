@@ -1,0 +1,13 @@
+Handle,Title,Body (HTML),Vendor,Type,Tags,Published,Option1 Name,Option1 Value,Option2 Name,Option2 Value,Variant SKU,Variant Barcode,Variant Inventory Tracker,Variant Inventory Qty,Variant Price,Cost per item,Variant Requires Shipping,Variant Taxable,Status
+classic-cotton-tee,Classic Cotton Tee,Soft 180gsm cotton crew tee.,Northgate Apparel,Apparel,demo,TRUE,Color,Black,Size,S,TEE-BLK-S,9311000000018,shopify,10,24.95,7.20,TRUE,TRUE,active
+classic-cotton-tee,,,,,,,,Black,,M,TEE-BLK-M,9311000000025,shopify,10,24.95,7.20,TRUE,TRUE,
+classic-cotton-tee,,,,,,,,Black,,L,TEE-BLK-L,9311000000032,shopify,10,24.95,7.20,TRUE,TRUE,
+classic-cotton-tee,,,,,,,,White,,S,TEE-WHT-S,9311000000049,shopify,10,24.95,7.20,TRUE,TRUE,
+classic-cotton-tee,,,,,,,,White,,M,TEE-WHT-M,9311000000056,shopify,10,24.95,7.20,TRUE,TRUE,
+classic-cotton-tee,,,,,,,,White,,L,TEE-WHT-L,9311000000063,shopify,10,24.95,7.20,TRUE,TRUE,
+crew-sweatshirt,Crew Sweatshirt,Heavyweight fleece crew sweatshirt.,Northgate Apparel,Apparel,demo,TRUE,Color,Navy,Size,M,SWT-NVY-M,9311000000117,shopify,10,49.95,16.80,TRUE,TRUE,active
+crew-sweatshirt,,,,,,,,Navy,,L,SWT-NVY-L,9311000000124,shopify,10,49.95,16.80,TRUE,TRUE,
+crew-sweatshirt,,,,,,,,Grey,,M,SWT-GRY-M,9311000000131,shopify,10,49.95,16.80,TRUE,TRUE,
+crew-sweatshirt,,,,,,,,Grey,,L,SWT-GRY-L,9311000000148,shopify,10,49.95,16.80,TRUE,TRUE,
+ribbed-beanie,Ribbed Beanie,Warm ribbed-knit beanie.,Northgate Apparel,Apparel,demo,TRUE,Color,Black,Size,One Size,BNE-BLK,9311000000216,shopify,10,16.95,4.50,TRUE,TRUE,active
+ribbed-beanie,,,,,,,,Charcoal,,One Size,BNE-CHR,9311000000223,shopify,10,16.95,4.50,TRUE,TRUE,
