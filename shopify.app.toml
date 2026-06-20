@@ -1,22 +1,22 @@
 name = "PitStop"
 client_id = "18ddcec512c65b690f901696df9a9d43"
-application_url = "https://pitstop-shopify.vercel.app"
+application_url = "https://pitstop.arc-labs.com.au"
 embedded = true
 
 [access_scopes]
 scopes = "read_products,read_locations,write_inventory"
 
 [auth]
-redirect_urls = [ "https://pitstop-shopify.vercel.app/api/shopify/auth/callback" ]
+redirect_urls = [ "https://pitstop.arc-labs.com.au/api/shopify/auth/callback" ]
 
 [webhooks]
 api_version = "2025-04"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
-  uri = "https://pitstop-shopify.vercel.app/api/shopify/webhooks/app-uninstalled"
+  uri = "https://pitstop.arc-labs.com.au/api/shopify/webhooks/app-uninstalled"
 
   [webhooks.privacy_compliance]
-  customer_data_request_url = "https://pitstop-shopify.vercel.app/api/shopify/webhooks/customers-data-request"
-  customer_deletion_url = "https://pitstop-shopify.vercel.app/api/shopify/webhooks/customers-redact"
-  shop_deletion_url = "https://pitstop-shopify.vercel.app/api/shopify/webhooks/shop-redact"
+  customer_data_request_url = "https://pitstop.arc-labs.com.au/api/shopify/webhooks/customers-data-request"
+  customer_deletion_url = "https://pitstop.arc-labs.com.au/api/shopify/webhooks/customers-redact"
+  shop_deletion_url = "https://pitstop.arc-labs.com.au/api/shopify/webhooks/shop-redact"
