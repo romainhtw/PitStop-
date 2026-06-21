@@ -9,6 +9,7 @@ import {
   updateInventoryItemCost,
   checkLocation,
   getPrimaryLocationGid,
+  activateInventoryItems,
 } from "@/lib/shopify";
 import { requireShop } from "@/lib/shopify/requireShop";
 import { lookupMapping, saveMapping, lookupNameMapping, saveNameMapping } from "@/lib/adminMappings";
@@ -312,11 +313,11 @@ export async function POST(req: NextRequest) {
     const matchedResults = results.filter((r) => r.inventoryItemId);
     const inventoryItemIds = Array.from(new Set(matchedResults.map((r) => r.inventoryItemId!)));
 
-    const levelMap = new Map<string, { onHandQty: number; unitCost: number | null; tracked: boolean }>();
+    const levelMap = new Map<string, { onHandQty: number; unitCost: number | null; tracked: boolean; stocked: boolean }>();
     if (inventoryItemIds.length > 0) {
       const levels = await fetchInventoryLevels(shop, inventoryItemIds, locationGid);
       for (const l of levels) {
-        levelMap.set(l.inventoryItemId, { onHandQty: l.onHandQty, unitCost: l.unitCost, tracked: l.tracked });
+        levelMap.set(l.inventoryItemId, { onHandQty: l.onHandQty, unitCost: l.unitCost, tracked: l.tracked, stocked: l.stocked });
       }
     }
 
@@ -417,6 +418,15 @@ export async function POST(req: NextRequest) {
         changeFromQuantity: initialQty,
         lineItemId: result.lineItemId,
       });
+    }
+
+    // Stock any item not yet present at this location, otherwise inventorySetQuantities
+    // fails with "The specified inventory item is not stocked at the location."
+    const notStocked = batchItems
+      .map((b) => b.inventoryItemId)
+      .filter((id) => !levelMap.get(id)?.stocked);
+    if (notStocked.length > 0) {
+      await activateInventoryItems(shop, notStocked, locationGid);
     }
 
     const { userErrors, groupId } = await batchSetInventory(

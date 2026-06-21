@@ -587,6 +587,8 @@ export interface InventoryLevelResult {
   onHandQty: number;
   unitCost: number | null;
   tracked: boolean;
+  /** False when the item has no inventory level at this location (not stocked yet). */
+  stocked: boolean;
 }
 
 export async function fetchInventoryLevels(
@@ -605,7 +607,44 @@ export async function fetchInventoryLevels(
     onHandQty: node.inventoryLevel?.quantities?.find((q) => q.name === "on_hand")?.quantity ?? 0,
     unitCost: node.unitCost ? parseFloat(node.unitCost.amount) : null,
     tracked: node.tracked ?? true,
+    stocked: !!node.inventoryLevel,
   }));
+}
+
+const INVENTORY_ACTIVATE_MUTATION = /* GraphQL */ `
+  mutation InventoryActivate($inventoryItemId: ID!, $locationId: ID!) {
+    inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId) {
+      inventoryLevel { id }
+      userErrors { field message }
+    }
+  }
+`;
+
+/**
+ * Stocks inventory items at a location (activates them) so a subsequent
+ * inventorySetQuantities won't fail with "not stocked at the location".
+ * Call ONLY for items known to be unstocked — activating without `available`
+ * creates the level at 0 and never touches an already-stocked item.
+ * Best-effort: errors are logged, not thrown (the set step surfaces real failures).
+ */
+export async function activateInventoryItems(
+  shop: string,
+  inventoryItemIds: string[],
+  locationGid: string
+): Promise<void> {
+  for (const inventoryItemId of inventoryItemIds) {
+    try {
+      const res = await shopifyFetch<{ inventoryActivate: { userErrors: Array<{ message: string }> } }>(
+        shop,
+        INVENTORY_ACTIVATE_MUTATION,
+        { inventoryItemId, locationId: locationGid }
+      );
+      const errs = res?.data?.inventoryActivate?.userErrors ?? [];
+      if (errs.length) console.error(`[activateInventory] ${inventoryItemId}:`, errs.map((e) => e.message).join("; "));
+    } catch (e) {
+      console.error(`[activateInventory] ${inventoryItemId} threw`, e);
+    }
+  }
 }
 
 const CHECK_LOCATION_QUERY = /* GraphQL */ `
