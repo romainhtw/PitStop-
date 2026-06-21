@@ -690,8 +690,6 @@ export default function ReviewPurchaseOrderPage() {
           )}
           <a
             href={`/purchase-orders/${params.id}/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:border-accent hover:text-accent px-3 py-2 rounded transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
