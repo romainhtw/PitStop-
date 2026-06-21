@@ -90,7 +90,7 @@ export async function getPrimaryLocationGid(shop: string): Promise<string | null
 
 export const FIND_VARIANT_QUERY = /* GraphQL */ `
   query FindVariant($query: String!) {
-    productVariants(first: 1, query: $query) {
+    productVariants(first: 10, query: $query) {
       edges {
         node {
           id
@@ -115,7 +115,7 @@ export const FIND_VARIANT_QUERY = /* GraphQL */ `
 
 const FIND_VARIANT_WITH_INVENTORY_QUERY = /* GraphQL */ `
   query FindVariantWithInventory($query: String!, $locationId: ID!) {
-    productVariants(first: 1, query: $query) {
+    productVariants(first: 10, query: $query) {
       edges {
         node {
           id
@@ -253,13 +253,20 @@ export async function findVariantBySku(
   if (!sku) return null;
 
   const query = locationGid ? FIND_VARIANT_WITH_INVENTORY_QUERY : FIND_VARIANT_QUERY;
+  const target = sku.trim().toLowerCase();
+  const safe = sku.replace(/['"\\]/g, " ").trim();
 
-  for (const searchField of [`sku:${sku}`, `barcode:${sku}`]) {
-    const variables: Record<string, string> = { query: searchField };
+  for (const field of ["sku", "barcode"] as const) {
+    const variables: Record<string, string> = { query: `${field}:'${safe}'` };
     if (locationGid) variables.locationId = locationGid;
     const result = await shopifyFetch<FindVariantData>(shop, query, variables);
     const edges = result?.data?.productVariants?.edges ?? [];
-    if (edges.length > 0) return edges[0].node;
+    // Shopify search is tokenized, so "sku:TEE-BLK-M" can return TEE-BLK-S too.
+    // Keep ONLY an exact field match so distinct variants never collapse onto one.
+    const exact = edges.find(
+      (e) => (field === "sku" ? e.node.sku : e.node.barcode)?.trim().toLowerCase() === target
+    );
+    if (exact) return exact.node;
   }
 
   return null;

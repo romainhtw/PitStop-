@@ -420,9 +420,23 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Defensive: collapse any duplicate inventory items (distinct lines that
+    // resolved to the same variant) — inventorySetQuantities rejects a batch with
+    // a repeated (inventoryItemId, locationId) pair ("must be unique").
+    const mergedById = new Map<string, { inventoryItemId: string; quantity: number; changeFromQuantity: number }>();
+    for (const b of batchItems) {
+      const ex = mergedById.get(b.inventoryItemId);
+      if (ex) ex.quantity += b.quantity - b.changeFromQuantity;
+      else mergedById.set(b.inventoryItemId, { inventoryItemId: b.inventoryItemId, quantity: b.quantity, changeFromQuantity: b.changeFromQuantity });
+    }
+    const writeItems = Array.from(mergedById.values());
+    if (writeItems.length < batchItems.length) {
+      console.warn(`[sync] merged ${batchItems.length - writeItems.length} duplicate inventory item(s) before write`);
+    }
+
     // Stock any item not yet present at this location, otherwise inventorySetQuantities
     // fails with "The specified inventory item is not stocked at the location."
-    const notStocked = batchItems
+    const notStocked = writeItems
       .map((b) => b.inventoryItemId)
       .filter((id) => !levelMap.get(id)?.stocked);
     if (notStocked.length > 0) {
@@ -431,7 +445,7 @@ export async function POST(req: NextRequest) {
 
     const { userErrors, groupId } = await batchSetInventory(
       shop,
-      batchItems.map(({ inventoryItemId, quantity, changeFromQuantity }) => ({ inventoryItemId, quantity, changeFromQuantity })),
+      writeItems,
       locationGid,
       referenceDocumentUri
     );
