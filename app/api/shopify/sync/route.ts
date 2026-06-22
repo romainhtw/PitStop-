@@ -378,10 +378,11 @@ export async function POST(req: NextRequest) {
 
       let pushed: number;
       if (existingQty > 0 && existingCost > 0 && existingQty + incomingQty > 0) {
+        // True weighted average across existing + incoming units.
         pushed = (existingQty * existingCost + incomingQty * incomingCost) / (existingQty + incomingQty);
-      } else if (existingCost > 0) {
-        pushed = (existingCost + incomingCost) / 2;
       } else {
+        // No on-hand stock → the moving average is simply the incoming cost.
+        // (Averaging with a stale prior cost would fabricate a wrong COGS.)
         pushed = incomingCost;
       }
       result.newAvgCost = parseFloat(pushed.toFixed(4));
