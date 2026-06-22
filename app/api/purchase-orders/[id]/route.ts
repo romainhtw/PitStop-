@@ -107,12 +107,14 @@ export async function DELETE(
             );
           }
 
-          // 2. Restore costs from costSnapshot
+          // 2. Restore costs from costSnapshot — only positive prior costs.
+          // A snapshot of 0 means "no prior cost on record"; pushing 0 would
+          // overwrite the item cost with a real $0.00 instead of leaving it.
           if (po.costSnapshot && Object.keys(po.costSnapshot).length > 0) {
             await Promise.allSettled(
-              Object.entries(po.costSnapshot).map(([invId, prevCost]) =>
-                updateInventoryItemCost(shop, invId, prevCost)
-              )
+              Object.entries(po.costSnapshot)
+                .filter(([, prevCost]) => typeof prevCost === "number" && prevCost > 0)
+                .map(([invId, prevCost]) => updateInventoryItemCost(shop, invId, prevCost))
             );
           }
         }
