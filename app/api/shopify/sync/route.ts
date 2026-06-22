@@ -16,6 +16,7 @@ import { lookupMapping, saveMapping, lookupNameMapping, saveNameMapping } from "
 import type { AuditLog, PurchaseOrder, LineSyncResult, SyncResult, VariantSuggestion } from "@/lib/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 // Returns option values that look like model identifiers (contain digits: "57|64", "DT 240", "12x100")
 function modelOptionTokens(optionValues?: Array<{ optionName: string; optionValue: string }>): string {
@@ -321,15 +322,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const matchedItems = visibleItems.filter((item) =>
-      results.find((r) => r.lineItemId === item.id && r.inventoryItemId)
-    );
+    // Allocate the surcharge across ALL invoice lines (correct denominator),
+    // then apply only matched lines' shares below. Allocating over matched-only
+    // lines over-loads each matched unit's landed cost when some lines are unmatched.
     const landedCostAllocations = allocateLandedCosts(
-      matchedItems.map((it) => ({ costPrice: it.costPrice * exchangeRate, qty: it.qty })),
+      visibleItems.map((it) => ({ costPrice: it.costPrice * exchangeRate, qty: it.qty })),
       po.invoiceTotals
     );
     const landedCostMap = new Map<string, number>();
-    matchedItems.forEach((item, idx) => {
+    visibleItems.forEach((item, idx) => {
       landedCostMap.set(item.id, landedCostAllocations[idx] ?? 0);
     });
 
