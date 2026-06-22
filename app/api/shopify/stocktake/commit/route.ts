@@ -50,11 +50,14 @@ export async function POST(req: NextRequest) {
 
     const referenceDocumentUri = `gid://${merchantId}/Stocktake/ST-${new Date().toISOString().slice(0, 10)}-${Date.now()}`;
 
+    // Baseline above reads on_hand → adjust the on_hand ledger too (a physical
+    // count corrects on-hand units, not the derived "available" quantity).
     const { userErrors, groupId } = await batchAdjustInventory(
       shop,
       changes.map((c) => ({ inventoryItemId: c.inventoryItemId, locationId: c.locationId, delta: c.delta })),
-      "cycle_count_available",
-      referenceDocumentUri
+      "correction",
+      referenceDocumentUri,
+      "on_hand"
     );
 
     if (userErrors.length > 0) {

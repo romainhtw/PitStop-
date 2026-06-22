@@ -179,7 +179,8 @@ export async function batchAdjustInventory(
   shop: string,
   changes: BatchAdjustChange[],
   reason: string,
-  referenceDocumentUri: string
+  referenceDocumentUri: string,
+  name: string = "available"
 ): Promise<{ userErrors: Array<{ field: string; message: string }>; groupId?: string }> {
   if (changes.length === 0) return { userErrors: [] };
 
@@ -190,7 +191,7 @@ export async function batchAdjustInventory(
   for (let i = 0; i < changes.length; i += CHUNK) {
     const chunk = changes.slice(i, i + CHUNK);
     const result = await shopifyFetch<BatchAdjustData>(shop, BATCH_ADJUST_MUTATION, {
-      input: { name: "available", reason, referenceDocumentUri, changes: chunk },
+      input: { name, reason, referenceDocumentUri, changes: chunk },
     });
     const data = result?.data?.inventoryAdjustQuantities;
     if (data?.userErrors?.length) allErrors.push(...data.userErrors);

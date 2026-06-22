@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac, timingSafeEqual } from "crypto";
 import { adminDb } from "@/lib/firebaseAdmin";
+import { verifyWebhookHmac } from "@/lib/shopify/webhookVerify";
 import type { ShopifyProduct } from "@/lib/types";
 
 export const runtime = "nodejs";
-
-function verifyHmac(body: string, hmacHeader: string, secret: string): boolean {
-  const computed = createHmac("sha256", secret).update(body, "utf8").digest("base64");
-  try {
-    return timingSafeEqual(Buffer.from(computed), Buffer.from(hmacHeader));
-  } catch {
-    return false;
-  }
-}
 
 interface WebhookVariant {
   id: number;
@@ -36,16 +27,12 @@ interface WebhookProduct {
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
-  const hmacHeader = req.headers.get("x-shopify-hmac-sha256") ?? "";
+  const hmacHeader = req.headers.get("x-shopify-hmac-sha256");
   const topic = req.headers.get("x-shopify-topic") ?? "";
 
-  const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
-  // Always require a configured secret — reject if missing
-  if (!secret) {
-    console.error("[shopify-webhook] SHOPIFY_WEBHOOK_SECRET not configured");
-    return NextResponse.json({ error: "Webhook not configured" }, { status: 500 });
-  }
-  if (!verifyHmac(rawBody, hmacHeader, secret)) {
+  // Shopify signs every webhook with the app's API secret — verify with the same
+  // helper as the GDPR/uninstalled webhooks (uses SHOPIFY_API_SECRET).
+  if (!verifyWebhookHmac(rawBody, hmacHeader)) {
     return NextResponse.json({ error: "Invalid HMAC" }, { status: 401 });
   }
 
@@ -56,25 +43,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // ── Resolve which merchant this webhook belongs to (multi-tenant routing) ──
-  const shopDomain = (req.headers.get("x-shopify-shop-domain") ?? "").trim().toLowerCase();
-  let merchantId: string | null = null;
-  if (shopDomain) {
-    const snap = await adminDb
-      .collection("merchants")
-      .where("shopifyStoreDomain", "==", shopDomain)
-      .limit(1)
-      .get();
-    if (!snap.empty) merchantId = snap.docs[0].id;
-  }
-  // Fallback for env-configured single-tenant domain (set SHOPIFY_STORE_DOMAIN + SHOPIFY_MERCHANT_ID)
-  if (!merchantId && shopDomain && shopDomain === (process.env.SHOPIFY_STORE_DOMAIN ?? "").trim().toLowerCase()) {
-    merchantId = process.env.SHOPIFY_MERCHANT_ID ?? "";
-  }
+  // Scope by shop domain — the SAME merchantId convention used everywhere else
+  // (requireShop returns the shop domain; catalog/sync writes merchantId = shop).
+  const merchantId = (req.headers.get("x-shopify-shop-domain") ?? "").trim().toLowerCase();
   if (!merchantId) {
     // Unknown shop — ack so Shopify stops retrying, but write nothing
-    console.warn("[shopify-webhook] no merchant for shop domain:", shopDomain);
-    return NextResponse.json({ ok: true, action: "no_merchant", shopDomain });
+    console.warn("[shopify-webhook] products webhook with no shop domain");
+    return NextResponse.json({ ok: true, action: "no_shop" });
   }
 
   const col = adminDb.collection("shopifyProducts");
@@ -116,7 +91,7 @@ export async function POST(req: NextRequest) {
       compareAtPrice: v.compare_at_price ? parseFloat(v.compare_at_price) : null,
       inventoryItemId: `gid://shopify/InventoryItem/${v.inventory_item_id}`,
       productType: payload.product_type || "",
-      status: payload.status.toUpperCase(),
+      status: (payload.status || "active").toUpperCase(),
       tags,
       shopifyUpdatedAt: payload.updated_at,
       syncedAt,
