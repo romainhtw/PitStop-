@@ -764,11 +764,15 @@ export async function updateInventoryItemCost(
   shop: string,
   inventoryItemId: string,
   cost: number
-): Promise<void> {
-  await shopifyFetch(shop, UPDATE_ITEM_COST_MUTATION, {
-    id: inventoryItemId,
-    input: { cost: cost.toFixed(4) },
-  });
+): Promise<{ userErrors: Array<{ field: string; message: string }> }> {
+  const result = await shopifyFetch<{ inventoryItemUpdate: { userErrors: Array<{ field: string; message: string }> } }>(
+    shop,
+    UPDATE_ITEM_COST_MUTATION,
+    { id: inventoryItemId, input: { cost: cost.toFixed(4) } }
+  );
+  const userErrors = result?.data?.inventoryItemUpdate?.userErrors ?? [];
+  const top = (result?.errors ?? []).map((e) => ({ field: "", message: e.message }));
+  return { userErrors: [...userErrors, ...top] };
 }
 
 const MOVE_INVENTORY_MUTATION = /* GraphQL */ `

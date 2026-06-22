@@ -464,6 +464,7 @@ export async function POST(req: NextRequest) {
       referenceDocumentUri
     );
 
+    let costErrorCount = 0;
     if (userErrors.length > 0) {
       const isConcurrencyError = userErrors.some(
         (e) => e.code === "INVALID" || e.message.toLowerCase().includes("quantity")
@@ -500,11 +501,14 @@ export async function POST(req: NextRequest) {
         result.delta = lineItem?.qty ?? 0;
       }
 
-      await Promise.allSettled(
-        results
-          .filter((r) => r.inventoryItemId && r.newAvgCost && r.newAvgCost > 0 && !priorSyncedIds.has(r.lineItemId))
-          .map((r) => updateInventoryItemCost(shop, r.inventoryItemId!, r.newAvgCost!))
+      const costTargets = results.filter((r) => r.inventoryItemId && r.newAvgCost && r.newAvgCost > 0 && !priorSyncedIds.has(r.lineItemId));
+      const costOutcomes = await Promise.allSettled(
+        costTargets.map((r) => updateInventoryItemCost(shop, r.inventoryItemId!, r.newAvgCost!))
       );
+      costOutcomes.forEach((o, i) => {
+        const errs = o.status === "rejected" ? String(o.reason) : o.value.userErrors.map((e) => e.message).join("; ");
+        if (errs) { costErrorCount++; console.error(`[sync] cost update failed for ${costTargets[i].inventoryItemId}: ${errs}`); }
+      });
     }
 
     const syncResult: SyncResult = {
@@ -513,6 +517,7 @@ export async function POST(req: NextRequest) {
       successCount: results.filter((r) => r.status === "synced").length,
       notFoundCount: results.filter((r) => r.status === "not_found").length,
       errorCount: results.filter((r) => r.status === "error").length,
+      costErrorCount,
     };
 
     const newStatus = syncResult.errorCount === 0 ? "approved" : "awaiting_review";

@@ -143,5 +143,8 @@ export async function POST(req: NextRequest) {
     variantId: variant.id,
     inventoryItemId,
     productTitle: product.title,
+    warning: updErrors.length > 0
+      ? `Product created, but SKU/barcode/price may not have saved: ${updErrors.map((e) => e.message).join("; ")}`
+      : undefined,
   });
 }

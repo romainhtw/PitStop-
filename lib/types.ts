@@ -71,6 +71,7 @@ export interface SyncResult {
   successCount: number;
   notFoundCount: number;
   errorCount: number;
+  costErrorCount?: number;
   duplicateInvoice?: { detectedAt: string; originalPoId: string };
   locationInactive?: boolean;
 }
