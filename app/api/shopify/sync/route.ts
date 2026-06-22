@@ -406,10 +406,23 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Lines already written to Shopify by a PREVIOUS (partial) sync must NOT be
+    // re-applied — otherwise re-syncing the remaining failed lines double-counts
+    // every previously-synced line (the guard above only covers fully-approved POs).
+    const priorSyncedIds = new Set(
+      ((po.syncResult && po.syncResult.results) || [])
+        .filter((r) => r.status === "synced")
+        .map((r) => r.lineItemId)
+    );
     const batchItems: Array<{ inventoryItemId: string; quantity: number; changeFromQuantity: number; lineItemId: string }> = [];
 
     for (const result of results) {
       if (!result.inventoryItemId) continue;
+      if (priorSyncedIds.has(result.lineItemId)) {
+        result.status = "synced";
+        result.delta = 0;
+        continue;
+      }
       const lineItem = visibleItems.find((li) => li.id === result.lineItemId);
       if (!lineItem) continue;
       const initialQty = levelMap.get(result.inventoryItemId)?.onHandQty ?? 0;
@@ -473,7 +486,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         for (const result of results) {
-          if (result.inventoryItemId) {
+          if (result.inventoryItemId && !priorSyncedIds.has(result.lineItemId)) {
             result.status = "error";
             result.errorMessage = userErrors.map((e) => e.message).join("; ");
           }
@@ -481,7 +494,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       for (const result of results) {
-        if (!result.inventoryItemId) continue;
+        if (!result.inventoryItemId || priorSyncedIds.has(result.lineItemId)) continue;
         const lineItem = visibleItems.find((li) => li.id === result.lineItemId);
         result.status = "synced";
         result.delta = lineItem?.qty ?? 0;
@@ -489,7 +502,7 @@ export async function POST(req: NextRequest) {
 
       await Promise.allSettled(
         results
-          .filter((r) => r.inventoryItemId && r.newAvgCost && r.newAvgCost > 0)
+          .filter((r) => r.inventoryItemId && r.newAvgCost && r.newAvgCost > 0 && !priorSyncedIds.has(r.lineItemId))
           .map((r) => updateInventoryItemCost(shop, r.inventoryItemId!, r.newAvgCost!))
       );
     }
