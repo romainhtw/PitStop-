@@ -19,6 +19,9 @@ export async function shopifyFetch<T = unknown>(
   if (!s) throw new Error("SHOP_NOT_INSTALLED");
 
   const url = `https://${shop}/admin/api/${API_VERSION}/graphql.json`;
+  // A 5xx after a MUTATION may have already applied server-side — retrying would
+  // double-apply (e.g. inventory writes). Only read queries are safe to retry on 5xx.
+  const isMutation = /\bmutation\b/.test(query);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch(url, {
@@ -30,8 +33,9 @@ export async function shopifyFetch<T = unknown>(
       body: JSON.stringify({ query, variables }),
     });
 
-    // 429 or 5xx — back off and retry
-    if (res.status === 429 || res.status >= 500) {
+    // 429 (rate limit, pre-execution) is always safe to retry. A 5xx is only
+    // retried for read queries — never for mutations, which may have applied.
+    if (res.status === 429 || (res.status >= 500 && !isMutation)) {
       if (attempt < maxRetries) {
         await jitterDelay(attempt);
         continue;
