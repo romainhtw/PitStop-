@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ShopifyProduct } from "@/lib/types";
+import type { ShopifyProduct, VariantSuggestion } from "@/lib/types";
+import { apiFetch } from "@/lib/apiClient";
 
 interface ProductPickerProps {
   catalog: ShopifyProduct[];
@@ -14,11 +15,33 @@ interface ProductPickerProps {
 
 const norm = (s: string | undefined | null) => (s || "").toLowerCase();
 
+// Map a live Shopify search hit into the ShopifyProduct shape the list renders.
+function suggestionToProduct(s: VariantSuggestion): ShopifyProduct {
+  const [prod, ...rest] = (s.productTitle || "").split(" — ");
+  return {
+    variantId: s.variantId,
+    productId: "",
+    productTitle: prod || s.productTitle || "",
+    variantTitle: rest.join(" — "),
+    sku: s.sku ?? "",
+    barcode: s.barcode ?? "",
+    price: 0,
+    compareAtPrice: null,
+    inventoryItemId: s.inventoryItemId,
+    productType: "",
+    collections: [],
+    status: "active",
+    tags: [],
+    shopifyUpdatedAt: "",
+    syncedAt: "",
+  };
+}
+
 /**
- * Shared product search/select modal. Searches the loaded catalog instantly
- * (title, variant, SKU, barcode, collection) and groups variants under their
- * parent product so size/colour options appear together. Used by manual PO
- * creation, manual add-item, and the review-page match flow.
+ * Shared product search/select modal. Searches the cached catalog instantly AND
+ * queries Shopify live (debounced) so a product that exists in the store is
+ * always findable — even when the local catalog cache is empty or stale.
+ * Variants are grouped under their parent product.
  */
 export default function ProductPicker({
   catalog,
@@ -28,6 +51,9 @@ export default function ProductPicker({
   title = "Find a product",
 }: ProductPickerProps) {
   const [q, setQ] = useState(initialQuery);
+  const [live, setLive] = useState<ShopifyProduct[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -41,6 +67,35 @@ export default function ProductPicker({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Live Shopify search (debounced) — the cache is only a fast first layer.
+  useEffect(() => {
+    const query = q.trim();
+    if (query.length < 2) { setLive([]); setSearching(false); setSearchError(null); return; }
+    let cancelled = false;
+    setSearching(true);
+    setSearchError(null);
+    const t = setTimeout(async () => {
+      try {
+        const res = await apiFetch(`/api/shopify/search?q=${encodeURIComponent(query)}`);
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          setSearchError(data.error || `Search failed (${res.status})`);
+          setLive([]);
+        } else {
+          setLive(((data.variants ?? []) as VariantSuggestion[]).map(suggestionToProduct));
+        }
+      } catch (e) {
+        if (!cancelled) { setSearchError(e instanceof Error ? e.message : "Search failed"); setLive([]); }
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [q]);
+
+  const liveIds = useMemo(() => new Set(live.map((p) => p.variantId)), [live]);
+
   const groups = useMemo(() => {
     const query = norm(q).trim();
     if (query.length < 2) return [];
@@ -51,9 +106,13 @@ export default function ProductPicker({
       return terms.every((t) => hay.includes(t));
     });
 
-    // Group variants under their parent product
+    // Merge live results (from Shopify) that the cache didn't already return.
+    const cacheVariantIds = new Set(matched.map((p) => p.variantId));
+    const liveOnly = live.filter((p) => !cacheVariantIds.has(p.variantId));
+    const all = [...matched, ...liveOnly];
+
     const map = new Map<string, { title: string; collection: string; variants: ShopifyProduct[] }>();
-    for (const p of matched) {
+    for (const p of all) {
       const key = p.productId || p.productTitle;
       if (!map.has(key)) {
         map.set(key, { title: p.productTitle, collection: p.collections?.[0] || "", variants: [] });
@@ -61,7 +120,7 @@ export default function ProductPicker({
       map.get(key)!.variants.push(p);
     }
     return Array.from(map.values()).slice(0, 50);
-  }, [q, catalog]);
+  }, [q, catalog, live]);
 
   const variantLabel = (p: ShopifyProduct) =>
     p.variantTitle && p.variantTitle !== "Default Title" ? p.variantTitle : "";
@@ -93,14 +152,20 @@ export default function ProductPicker({
               className="w-full pl-10 pr-3 py-2.5 text-sm rounded border border-border-1 bg-white text-gray-900 placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent"
             />
           </div>
+          <div className="mt-2 min-h-[16px] text-[11px]">
+            {searching && <span className="text-text-tertiary">Searching Shopify…</span>}
+            {searchError && <span className="text-red-600">Live search error: {searchError}</span>}
+          </div>
         </div>
 
         {/* Results */}
         <div className="flex-1 overflow-y-auto">
           {q.trim().length < 2 ? (
-            <p className="text-center text-text-tertiary text-sm py-12">Type at least 2 characters to search the catalog.</p>
+            <p className="text-center text-text-tertiary text-sm py-12">Type at least 2 characters to search.</p>
           ) : groups.length === 0 ? (
-            <p className="text-center text-text-tertiary text-sm py-12">No products match &ldquo;{q}&rdquo;.</p>
+            <p className="text-center text-text-tertiary text-sm py-12">
+              {searching ? "Searching Shopify…" : `No products match “${q}”.`}
+            </p>
           ) : (
             <div className="divide-y divide-border-0">
               {groups.map((g, gi) => (
@@ -110,27 +175,30 @@ export default function ProductPicker({
                     {g.collection && <span className="shrink-0 text-[10px] font-mono text-text-tertiary uppercase tracking-wide">{g.collection}</span>}
                   </div>
                   <div className="flex flex-col gap-1">
-                    {g.variants.map((p) => (
-                      <button
-                        key={p.variantId}
-                        onClick={() => onSelect(p)}
-                        className="group flex items-center justify-between gap-3 text-left px-3 py-2 rounded border border-transparent hover:border-accent hover:bg-surface-2 transition-colors"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-text-primary truncate">
-                            {variantLabel(p) || <span className="text-text-tertiary italic">Default</span>}
-                          </p>
-                          <p className="text-[11px] font-mono text-text-tertiary truncate">
-                            {p.sku || "no SKU"}{p.barcode ? ` · ${p.barcode}` : ""}
-                          </p>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-sm font-mono text-text-primary tabular-nums">${(p.price ?? 0).toFixed(2)}</p>
-                          <p className="text-[11px] font-mono text-text-tertiary tabular-nums">{stock(p)} in stock</p>
-                        </div>
-                        <span className="shrink-0 text-accent opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium">Select</span>
-                      </button>
-                    ))}
+                    {g.variants.map((p) => {
+                      const isLive = liveIds.has(p.variantId);
+                      return (
+                        <button
+                          key={p.variantId}
+                          onClick={() => onSelect(p)}
+                          className="group flex items-center justify-between gap-3 text-left px-3 py-2 rounded border border-transparent hover:border-accent hover:bg-surface-2 transition-colors"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm text-text-primary truncate">
+                              {variantLabel(p) || <span className="text-text-tertiary italic">Default</span>}
+                            </p>
+                            <p className="text-[11px] font-mono text-text-tertiary truncate">
+                              {p.sku || "no SKU"}{p.barcode ? ` · ${p.barcode}` : ""}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm font-mono text-text-primary tabular-nums">{isLive ? "—" : `$${(p.price ?? 0).toFixed(2)}`}</p>
+                            <p className="text-[11px] font-mono text-text-tertiary tabular-nums">{isLive ? "live" : `${stock(p)} in stock`}</p>
+                          </div>
+                          <span className="shrink-0 text-accent opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium">Select</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
