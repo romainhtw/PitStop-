@@ -158,7 +158,7 @@ export interface PurchaseOrder {
   exchangeRate?: number;
   taxVatNumber?: string;
   orderNumber: string;
-  location: "In-Store Fitzgerald St" | "Warehouse";
+  location: string;
   paymentTerms: string;
   lineItems: LineItem[];
   shippingCost: number;
