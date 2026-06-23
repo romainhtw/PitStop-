@@ -437,6 +437,10 @@ export default function ReviewPurchaseOrderPage() {
           productTitle: data.productTitle,
         },
       }));
+      // The product is created, but SKU/barcode/price can still fail to save
+      // (e.g. duplicate SKU). Surface the server's non-fatal warning so the
+      // operator knows to fix it rather than believing everything saved cleanly.
+      if (data.warning) setError(data.warning);
       setShowCreateFor((prev) => ({ ...prev, [lineItemId]: false }));
       setShowSearchFor((prev) => ({ ...prev, [lineItemId]: false }));
     } catch (e) {

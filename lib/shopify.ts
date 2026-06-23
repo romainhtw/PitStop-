@@ -833,18 +833,28 @@ export async function moveInventory(
   const result = await shopifyFetch<MoveInventoryData>(shop, MOVE_INVENTORY_MUTATION, {
     input: {
       reason: "correction",
+      // Shopify's current schema requires nested from/to terminal objects, each
+      // naming the ledger ("available"). The old flat fromLocationId/toLocationId
+      // shape is silently rejected at the GraphQL layer → zero stock moved.
       changes: changes.map((c) => ({
         inventoryItemId: c.inventoryItemId,
-        fromLocationId: c.fromLocationId,
-        toLocationId: c.toLocationId,
         quantity: c.quantity,
+        from: { locationId: c.fromLocationId, name: "available" },
+        to: { locationId: c.toLocationId, name: "available" },
       })),
     },
   });
 
+  // Surface top-level GraphQL errors too — a rejected mutation returns no data,
+  // which would otherwise be misread as a successful no-op move.
   const data = result?.data?.inventoryMoveQuantities;
-  return {
-    userErrors: data?.userErrors ?? [],
-    groupId: data?.inventoryAdjustmentGroup?.id,
-  };
+  const userErrors = [
+    ...(data?.userErrors ?? []),
+    ...((result?.errors ?? []).map((e) => ({ field: "", message: e.message }))),
+  ];
+  const groupId = data?.inventoryAdjustmentGroup?.id;
+  if (!groupId && userErrors.length === 0) {
+    userErrors.push({ field: "", message: "Inventory move returned no result — nothing was moved." });
+  }
+  return { userErrors, groupId };
 }

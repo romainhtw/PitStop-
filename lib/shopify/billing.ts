@@ -48,6 +48,16 @@ export async function getActiveSubscription(
   }
 }
 
+// ── Server-side billing enforcement ────────────────────────────────────────────
+// Dev stores are always allowed (for testing/App Store review); every other shop
+// must have an ACTIVE subscription before it can use paid/mutating features.
+// Fails closed: a transient Shopify error resolves to "no access" (402) rather
+// than silently granting free usage.
+export async function hasBillingAccess(shop: string): Promise<boolean> {
+  if (await isDevStore(shop)) return true;
+  return (await getActiveSubscription(shop)) !== null;
+}
+
 // ── Create subscription ────────────────────────────────────────────────────────
 
 const CREATE_SUBSCRIPTION_MUTATION = /* GraphQL */ `

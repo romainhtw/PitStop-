@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import { waitUntil } from "@vercel/functions";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { requireShop } from "@/lib/shopify/requireShop";
+import { hasBillingAccess } from "@/lib/shopify/billing";
 import type { PurchaseOrder } from "@/lib/types";
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
 
     const shop = await requireShop(req);
     if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    if (!(await hasBillingAccess(shop))) return NextResponse.json({ error: "SUBSCRIPTION_REQUIRED" }, { status: 402 });
     const merchantId = shop;
 
     const formData = await req.formData();

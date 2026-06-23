@@ -12,6 +12,7 @@ import {
   activateInventoryItems,
 } from "@/lib/shopify";
 import { requireShop } from "@/lib/shopify/requireShop";
+import { hasBillingAccess } from "@/lib/shopify/billing";
 import { lookupMapping, saveMapping, lookupNameMapping, saveNameMapping } from "@/lib/adminMappings";
 import type { AuditLog, PurchaseOrder, LineSyncResult, SyncResult, VariantSuggestion } from "@/lib/types";
 
@@ -149,6 +150,7 @@ export async function POST(req: NextRequest) {
   try {
     const shop = await requireShop(req);
     if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    if (!(await hasBillingAccess(shop))) return NextResponse.json({ error: "SUBSCRIPTION_REQUIRED" }, { status: 402 });
     const merchantId = shop;
 
     type SyncOverride = { variantId: string; inventoryItemId: string; productTitle: string };
@@ -365,10 +367,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const costSnapshot: Record<string, number> = {};
+    // Lines already written to Shopify by a PREVIOUS (partial) sync. Used to
+    // avoid double-applying inventory/cost AND to preserve the original reversal
+    // baselines (delta + cost) so a later delete can still undo them.
+    const priorSyncedIds = new Set(
+      ((po.syncResult && po.syncResult.results) || [])
+        .filter((r) => r.status === "synced")
+        .map((r) => r.lineItemId)
+    );
+    const priorDeltaMap = new Map<string, number>(
+      ((po.syncResult && po.syncResult.results) || [])
+        .filter((r) => r.status === "synced" && r.lineItemId)
+        .map((r) => [r.lineItemId, r.delta ?? 0])
+    );
+
+    // Seed from the existing snapshot so prior-sync baselines survive a re-sync;
+    // re-reading cost for already-synced lines would capture the post-sync
+    // averaged cost and corrupt the reversal baseline.
+    const costSnapshot: Record<string, number> = { ...(po.costSnapshot ?? {}) };
 
     for (const result of results) {
       if (!result.inventoryItemId || !result.landedCost || result.landedCost <= 0) continue;
+      if (priorSyncedIds.has(result.lineItemId)) continue;
       const level = levelMap.get(result.inventoryItemId);
       const lineItem = visibleItems.find((li) => li.id === result.lineItemId);
       const existingQty = level?.onHandQty ?? 0;
@@ -408,20 +428,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Lines already written to Shopify by a PREVIOUS (partial) sync must NOT be
-    // re-applied — otherwise re-syncing the remaining failed lines double-counts
-    // every previously-synced line (the guard above only covers fully-approved POs).
-    const priorSyncedIds = new Set(
-      ((po.syncResult && po.syncResult.results) || [])
-        .filter((r) => r.status === "synced")
-        .map((r) => r.lineItemId)
-    );
+    // re-applied — priorSyncedIds / priorDeltaMap are computed above.
     const batchItems: Array<{ inventoryItemId: string; quantity: number; changeFromQuantity: number; lineItemId: string }> = [];
 
     for (const result of results) {
       if (!result.inventoryItemId) continue;
       if (priorSyncedIds.has(result.lineItemId)) {
+        // already applied in a previous sync — keep reported as synced and
+        // PRESERVE its original delta so a later delete can still reverse it.
         result.status = "synced";
-        result.delta = 0;
+        result.delta = priorDeltaMap.get(result.lineItemId) ?? 0;
         continue;
       }
       const lineItem = visibleItems.find((li) => li.id === result.lineItemId);

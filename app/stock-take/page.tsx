@@ -24,6 +24,7 @@ export default function StockTakePage() {
   const [commitModalOpen, setCommitModalOpen] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [commitResult, setCommitResult] = useState<{ success: boolean; adjustedCount: number; message?: string } | null>(null);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const variantRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -50,6 +51,7 @@ export default function StockTakePage() {
   function resetAll() {
     setEntries({});
     clearAllEntries();
+    setConfirmResetOpen(false);
   }
 
   const handleScan = useCallback(async (code: string) => {
@@ -222,7 +224,16 @@ export default function StockTakePage() {
         body: JSON.stringify({ items, locationId }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Commit failed");
+      // 207 = partial success (some chunks returned userErrors). 207 is res.ok,
+      // so treat it (and any userErrors) as a failure rather than a silent success.
+      const failedCount = Array.isArray(data.userErrors) ? data.userErrors.length : 0;
+      if (!res.ok || res.status === 207 || failedCount > 0) {
+        throw new Error(
+          failedCount > 0
+            ? `${failedCount} item${failedCount > 1 ? "s" : ""} couldn't be updated. Re-count and commit again.`
+            : data.error || "Commit failed"
+        );
+      }
       setCommitResult({
         success: true,
         adjustedCount: data.adjustedCount ?? 0,
@@ -230,7 +241,11 @@ export default function StockTakePage() {
       });
       setCommitModalOpen(false);
     } catch (e) {
-      setCommitResult({ success: false, adjustedCount: 0, message: e instanceof Error ? e.message : "Unknown error" });
+      const raw = e instanceof Error ? e.message : "Unknown error";
+      const friendly = /failed to fetch|networkerror|load failed/i.test(raw)
+        ? "Couldn't reach the server — check your connection and try again."
+        : raw;
+      setCommitResult({ success: false, adjustedCount: 0, message: friendly });
       setCommitModalOpen(false);
     } finally {
       setCommitting(false);
@@ -267,6 +282,32 @@ export default function StockTakePage() {
           scanResult={scanResult}
           totalCounted={Object.values(entries).reduce((s, e) => s + (e.counted > 0 ? e.counted : 0), 0)}
         />
+      )}
+
+      {/* ── Reset confirm modal ── */}
+      {confirmResetOpen && (
+        <div className="fixed inset-0 z-50 bg-[var(--ps-overlay)] flex items-center justify-center p-4" onClick={() => setConfirmResetOpen(false)}>
+          <div className="bg-surface-1 border border-border-0 w-full max-w-sm p-5 animate-modal-in" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-sans text-base font-semibold text-text-primary mb-1">Clear all counted items?</h3>
+            <p className="text-sm text-text-secondary mb-4">
+              This wipes every count in this stock-take. It can&apos;t be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmResetOpen(false)}
+                className="min-h-[44px] px-4 text-sm border border-border-1 hover:border-border-2 text-text-secondary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={resetAll}
+                className="min-h-[44px] px-4 text-sm font-medium bg-status-shortage/10 border border-status-shortage/40 text-status-shortage hover:bg-status-shortage/20 transition-colors"
+              >
+                Reset all counts
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Commit confirm modal ── */}
@@ -423,8 +464,8 @@ export default function StockTakePage() {
         {doneCount > 0 && (
           <div className="px-4 py-3 border-t border-border-0">
             <button
-              onClick={resetAll}
-              className="text-2xs font-mono text-text-tertiary hover:text-status-shortage transition-colors"
+              onClick={() => setConfirmResetOpen(true)}
+              className="min-h-[44px] w-full text-left text-2xs font-mono text-text-tertiary hover:text-status-shortage transition-colors"
             >
               Reset all counts
             </button>
@@ -508,7 +549,7 @@ export default function StockTakePage() {
               >
                 Commit to Shopify
               </Button>
-              <button onClick={resetAll} className="text-2xs font-mono text-text-tertiary hover:text-status-shortage transition-colors px-1">
+              <button onClick={() => setConfirmResetOpen(true)} className="text-2xs font-mono text-text-tertiary hover:text-status-shortage transition-colors px-1">
                 Reset
               </button>
             </div>
