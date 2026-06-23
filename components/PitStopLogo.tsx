@@ -16,7 +16,7 @@ export default function PitStopLogo({ className = "" }: { className?: string }) 
         <rect x="0"  y="11" width="9" height="9" fill="currentColor" opacity="0.22" />
         <rect x="11" y="11" width="9" height="9" fill="currentColor" />
         {/* Diagonal slash — speed vector */}
-        <line x1="0" y1="20" x2="20" y2="0" stroke="#FF5A00" strokeWidth="2" strokeLinecap="square" />
+        <line x1="0" y1="20" x2="20" y2="0" stroke="var(--ps-accent)" strokeWidth="2" strokeLinecap="square" />
       </svg>
 
       {/* Wordmark — Geist Sans, tight tracking */}

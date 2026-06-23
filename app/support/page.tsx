@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import PitStopLogo from "@/components/PitStopLogo";
 
 export const metadata: Metadata = {
   title: "Support — PitStop",
@@ -11,6 +13,10 @@ export default function SupportPage() {
   return (
     <main className="min-h-screen px-6 py-12">
       <article className="mx-auto max-w-3xl">
+        <div className="mb-8 flex items-center justify-between border-b border-border-0 pb-4">
+          <PitStopLogo className="text-accent" />
+          <Link href="/privacy" className="text-sm text-accent hover:text-accent-dim transition-colors">Privacy</Link>
+        </div>
         <h1 className="text-2xl font-sans font-semibold tracking-tight text-text-primary mb-1">
           Support
         </h1>

@@ -48,7 +48,7 @@ function CreateProductForm({
   onSubmit: () => void;
   onCancel: () => void;
 }) {
-  const fieldCls = "w-full rounded border border-amber-200 bg-white text-gray-900 placeholder:text-gray-400 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent";
+  const fieldCls = "w-full rounded border border-status-drift/40 bg-surface-1 text-text-primary placeholder:text-text-tertiary px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent";
   return (
     <div className="mt-2 bg-surface-1 border border-amber-200 rounded-lg p-3 space-y-2">
       <p className="text-[10px] font-bold text-accent uppercase tracking-widest mb-1">New Shopify product</p>
@@ -864,7 +864,7 @@ export default function ReviewPurchaseOrderPage() {
               {lineItems.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-text-tertiary text-sm">
-                    No items yet — click &ldquo;Add Row&rdquo; to start.
+                    No items yet — use &ldquo;Search &amp; add product&rdquo; or &ldquo;Blank row&rdquo; to start.
                   </td>
                 </tr>
               ) : (
@@ -990,7 +990,7 @@ export default function ReviewPurchaseOrderPage() {
                     <td className="py-1.5 pr-2"><input type="number" min={0} className={cellCls} value={li.qty} onChange={(e) => updateItem(idx, { qty: Number(e.target.value) || 0 })} /></td>
                     <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={cellCls} value={li.costPrice} onChange={(e) => updateItem(idx, { costPrice: Number(e.target.value) || 0 })} /></td>
                     <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={cellCls} value={li.retailPrice} onChange={(e) => updateItem(idx, { retailPrice: Number(e.target.value) || 0 })} /></td>
-                    <td className="py-1.5 pr-2 text-center"><input type="checkbox" checked={li.gstApplicable} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className="w-4 h-4 accent-[#FF5A00]" /></td>
+                    <td className="py-1.5 pr-2 text-center"><input type="checkbox" checked={li.gstApplicable} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className="w-4 h-4 accent-accent" /></td>
                     {/* Hide + Delete */}
                     <td className="py-1.5">
                       <div className="flex items-center gap-0.5 justify-center">
@@ -1672,16 +1672,18 @@ export default function ReviewPurchaseOrderPage() {
           </div>
           {syncResult.notFoundCount > 0 && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-4 py-3 mb-5">
-              Items marked &ldquo;Not found&rdquo; were not in Shopify.{" "}
+              Items marked &ldquo;Not found&rdquo; weren&rsquo;t in Shopify. Click{" "}
+              <strong>&ldquo;Back to edit&rdquo;</strong> — you can match them to an existing product or create
+              them right here, then re-sync. You can also{" "}
               <a
                 href="https://admin.shopify.com/products/new"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-accent hover:underline font-medium"
+                className="underline hover:text-amber-900"
               >
-                Create those products in Shopify →
+                create them in Shopify admin
               </a>{" "}
-              then click &ldquo;Back to edit&rdquo; and re-sync.
+              if you prefer.
             </p>
           )}
           <div className="flex justify-end">

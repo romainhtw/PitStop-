@@ -4,7 +4,8 @@
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PITSTOP DESIGN SYSTEM — TOKEN LAYER
-   Pitch Black canvas. Hair-thin borders. Safety Orange accent. Mono data.
+   Light canvas by default (Shopify-admin parity); dark is the opt-in :root
+   fallback. Hair-thin borders. Safety Orange accent. Mono data.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {

@@ -306,7 +306,7 @@ export default function CatalogPage() {
                       type="checkbox"
                       checked={selectedCollections.has(c.title)}
                       onChange={() => toggleCollection(c.title)}
-                      className="w-4 h-4 accent-[#FF5A00]"
+                      className="w-4 h-4 accent-accent"
                     />
                     <span className="flex-1 text-sm text-text-primary">{c.title}</span>
                     <span className="text-xs font-mono text-text-tertiary">{c.count}</span>
@@ -474,6 +474,7 @@ export default function CatalogPage() {
           <input
             type="text"
             placeholder="Search name, SKU, barcode…"
+            aria-label="Search catalog"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-48 bg-surface-2 border border-border-1 text-text-primary placeholder:text-text-tertiary px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors"

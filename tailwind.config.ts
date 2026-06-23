@@ -11,6 +11,9 @@ const config: Config = {
       fontFamily: {
         sans: ["var(--font-geist-sans)", "Inter", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
         mono: ["var(--font-geist-mono)", "ui-monospace", "JetBrains Mono", "monospace"],
+        // Display = same Geist Sans stack; makes `font-display` headings explicit
+        // instead of silently falling back to the body font.
+        display: ["var(--font-geist-sans)", "Inter", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
       },
       colors: {
         // Canvas layers

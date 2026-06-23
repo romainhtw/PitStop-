@@ -215,11 +215,10 @@ export default function DashboardPage() {
       )}
 
       {/* Stat strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px border border-border-0 bg-border-0 mb-6 overflow-hidden">
+      <div className="grid grid-cols-3 gap-px border border-border-0 bg-border-0 mb-6 overflow-hidden">
         <StatCard label="Cost Value"  value={fmt(totalCost)}   loading={loading} />
         <StatCard label="Retail Value" value={fmt(totalRetail)} loading={loading} />
         <StatCard label="Total Items" value={totalItems}        loading={loading} />
-        <StatCard label="Stock Alerts" value="—" loading={false} href="/catalog" />
       </div>
 
       {/* Purchase Orders table */}
@@ -238,6 +237,7 @@ export default function DashboardPage() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Supplier, invoice, date…"
+              aria-label="Search purchase orders"
               className="w-full pl-7 pr-3 h-7 text-xs bg-surface-2 border border-border-0 text-text-primary placeholder:text-text-tertiary font-mono focus:outline-none focus:border-border-2 focus:ring-2 focus:ring-[var(--ps-focus)] transition-colors"
             />
           </div>
@@ -287,7 +287,7 @@ export default function DashboardPage() {
                       </Link>
                       <div className="flex items-center gap-3">
                         <button onClick={() => handleReuse(po)} disabled={reusing === po.id} className="text-xs text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-50">
-                          {reusing === po.id ? "…" : "Reuse"}
+                          {reusing === po.id ? "Creating…" : "Reuse"}
                         </button>
                         <DeleteButton po={po} onDelete={handleDelete} />
                       </div>

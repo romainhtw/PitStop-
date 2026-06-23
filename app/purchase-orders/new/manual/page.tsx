@@ -232,7 +232,7 @@ export default function ManualPurchaseOrderPage() {
                     <input type="number" step="0.01" min={0} className={cellCls} value={li.retailPrice} onChange={(e) => updateItem(idx, { retailPrice: Number(e.target.value) || 0 })} />
                   </td>
                   <td className="py-1.5 pr-2 text-center">
-                    <input type="checkbox" checked={li.gstApplicable} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className="w-4 h-4 accent-[#FF5A00]" />
+                    <input type="checkbox" checked={li.gstApplicable} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className="w-4 h-4 accent-accent" />
                   </td>
                   <td className="py-1.5">
                     <button onClick={() => removeRow(idx)} className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-red-500 text-xl leading-none rounded transition-colors">&times;</button>
