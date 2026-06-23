@@ -1189,8 +1189,8 @@ export default function ReviewPurchaseOrderPage() {
               </div>
             );
           })()}
-          <div className="bg-surface-1 border border-border-1 overflow-hidden mb-5">
-            <table className="w-full text-sm">
+          <div className="bg-surface-1 border border-border-1 overflow-x-auto mb-5">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="text-left bg-surface-1 border-b border-border-1">
                   <th className="px-4 py-3 text-[11px] font-semibold text-text-tertiary uppercase tracking-widest">Item</th>
@@ -1627,8 +1627,8 @@ export default function ReviewPurchaseOrderPage() {
               ← Back to edit
             </button>
           </div>
-          <div className="bg-surface-1 border border-border-1 overflow-hidden mb-6">
-            <table className="w-full text-sm">
+          <div className="bg-surface-1 border border-border-1 overflow-x-auto mb-6">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="text-left bg-surface-1 border-b border-border-1">
                   <th className="px-4 py-3 text-[11px] font-semibold text-text-tertiary uppercase tracking-widest">Item</th>
@@ -1659,8 +1659,11 @@ export default function ReviewPurchaseOrderPage() {
                           ✅ Synced{r.matchedFromCache && <span className="text-emerald-500 ml-0.5">·cached</span>}
                         </span>
                       )}
-                      {r.status === "not_found" && <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded-full" title={r.errorMessage}>⚠️ Not found</span>}
-                      {r.status === "error" && <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 px-2 py-1 rounded-full" title={r.errorMessage}>❌ Error</span>}
+                      {r.status === "not_found" && <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded-full">⚠️ Not found</span>}
+                      {r.status === "error" && <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 px-2 py-1 rounded-full">❌ Error</span>}
+                      {(r.status === "error" || r.status === "not_found") && r.errorMessage && (
+                        <p className="mt-1 text-[11px] text-text-secondary max-w-[260px] whitespace-normal break-words">{r.errorMessage}</p>
+                      )}
                     </td>
                   </tr>
                 ))}

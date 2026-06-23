@@ -77,8 +77,8 @@ function DeleteButton({ po, onDelete }: { po: PurchaseOrder; onDelete: (id: stri
   return (
     <button
       onClick={() => setConfirming(true)}
-      className="w-5 h-5 flex items-center justify-center text-text-tertiary hover:text-status-shortage transition-colors"
-      aria-label="Delete"
+      className="w-11 h-11 lg:w-5 lg:h-5 flex items-center justify-center text-text-tertiary hover:text-status-shortage transition-colors"
+      aria-label="Delete purchase order"
     >
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
         <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square"/>
@@ -115,6 +115,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [reusing, setReusing] = useState<string | null>(null);
+  const [reuseError, setReuseError] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch("/api/purchase-orders")
@@ -125,6 +126,7 @@ export default function DashboardPage() {
 
   async function handleReuse(po: PurchaseOrder) {
     setReusing(po.id);
+    setReuseError(null);
     try {
       const res = await apiFetch("/api/purchase-orders", {
         method: "POST",
@@ -139,10 +141,16 @@ export default function DashboardPage() {
           invoiceTotals: po.invoiceTotals,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't reuse this order");
       router.push(`/purchase-orders/${data.id}/review`);
-    } catch {
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : "Couldn't reuse this order";
+      setReuseError(
+        /failed to fetch|networkerror|load failed/i.test(raw)
+          ? "Couldn't reach the server — check your connection and try again."
+          : raw
+      );
       setReusing(null);
     }
   }
@@ -198,6 +206,13 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {reuseError && (
+        <div role="alert" className="mb-4 flex items-center justify-between gap-3 bg-status-shortage-bg border border-status-shortage/30 px-4 py-2.5">
+          <span className="text-sm text-status-shortage">{reuseError}</span>
+          <button onClick={() => setReuseError(null)} className="text-xs text-text-tertiary hover:text-text-secondary shrink-0">Dismiss</button>
+        </div>
+      )}
 
       {/* Stat strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-px border border-border-0 bg-border-0 mb-6 overflow-hidden">

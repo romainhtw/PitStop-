@@ -24,7 +24,7 @@ interface BadgeConfig {
 
 const STATUS_CONFIG: Record<StatusType, BadgeConfig> = {
   EXACT_MATCH:     { label: "MATCH",   color: "var(--ps-status-match)",    bg: "var(--ps-status-match-bg)"    },
-  APPROVED:        { label: "MATCH",   color: "var(--ps-status-match)",    bg: "var(--ps-status-match-bg)"    },
+  APPROVED:        { label: "APPROVED", color: "var(--ps-status-match)",   bg: "var(--ps-status-match-bg)"    },
   COST_DRIFT:      { label: "DRIFT",   color: "var(--ps-status-drift)",    bg: "var(--ps-status-drift-bg)"    },
   QTY_SHORTAGE:    { label: "SHORT",   color: "var(--ps-status-shortage)", bg: "var(--ps-status-shortage-bg)" },
   NEW_ITEM:        { label: "NEW",     color: "var(--ps-status-new)",      bg: "var(--ps-status-new-bg)"      },

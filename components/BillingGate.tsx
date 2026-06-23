@@ -22,6 +22,7 @@ export default function BillingGate({ children }: { children: React.ReactNode })
   const [state, setState] = useState<GateState>("checking");
   const [confirmationUrl, setConfirmationUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [slow, setSlow] = useState(false);
 
   const runCheck = useCallback(async () => {
     setState("checking");
@@ -58,13 +59,25 @@ export default function BillingGate({ children }: { children: React.ReactNode })
     runCheck();
   }, [isPublic, runCheck]);
 
+  // Reassure on slow connections instead of looking frozen.
+  useEffect(() => {
+    if (state !== "checking") { setSlow(false); return; }
+    const t = setTimeout(() => setSlow(true), 4000);
+    return () => clearTimeout(t);
+  }, [state]);
+
   // Public routes bypass the gate entirely.
   if (isPublic) return <>{children}</>;
 
   if (state === "checking") {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "sans-serif", color: "inherit" }}>
-        Loading…
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex flex-col items-center justify-center gap-3 min-h-screen bg-canvas text-text-secondary"
+      >
+        <span className="w-6 h-6 border-2 border-border-1 border-t-accent rounded-full animate-spin" />
+        <p className="text-sm font-mono">{slow ? "Taking longer than usual…" : "Loading…"}</p>
       </div>
     );
   }
@@ -88,7 +101,7 @@ export default function BillingGate({ children }: { children: React.ReactNode })
     padding: "0.75rem 1.75rem",
     fontSize: "1rem",
     fontWeight: 600,
-    background: "#FF5A00",
+    background: "var(--ps-accent)",
     color: "#fff",
     border: "none",
     borderRadius: "0.5rem",
@@ -96,7 +109,7 @@ export default function BillingGate({ children }: { children: React.ReactNode })
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", textAlign: "center", padding: "2rem", fontFamily: "sans-serif", gap: "1rem" }}>
+    <div role={failed ? "alert" : undefined} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", textAlign: "center", padding: "2rem", fontFamily: "sans-serif", gap: "1rem" }}>
       <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>
         {failed ? "Couldn't start billing" : "Start your PitStop subscription"}
       </h1>

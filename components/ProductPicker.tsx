@@ -128,7 +128,7 @@ export default function ProductPicker({
   const stock = (p: ShopifyProduct) => (p.onHandQtyStore ?? 0) + (p.onHandQtyWarehouse ?? 0);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 pt-20" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-[var(--ps-overlay)] flex items-start justify-center p-4 pt-20" onClick={onClose}>
       <div
         className="bg-surface-1 border border-border-1 w-full max-w-2xl max-h-[75vh] flex flex-col rounded-lg shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -137,7 +137,7 @@ export default function ProductPicker({
         <div className="p-4 border-b border-border-0">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-text-primary">{title}</p>
-            <button onClick={onClose} className="w-6 h-6 flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors text-lg leading-none">&times;</button>
+            <button onClick={onClose} aria-label="Close product search" className="w-11 h-11 sm:w-7 sm:h-7 flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors text-lg leading-none">&times;</button>
           </div>
           <div className="relative">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -149,12 +149,13 @@ export default function ProductPicker({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by product name, SKU, barcode, or collection…"
-              className="w-full pl-10 pr-3 py-2.5 text-sm rounded border border-border-1 bg-white text-gray-900 placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent"
+              aria-label="Search products"
+              className="w-full pl-10 pr-3 py-2.5 text-sm rounded border border-border-1 bg-surface-1 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent"
             />
           </div>
           <div className="mt-2 min-h-[16px] text-[11px]">
             {searching && <span className="text-text-tertiary">Searching Shopify…</span>}
-            {searchError && <span className="text-red-600">Live search error: {searchError}</span>}
+            {searchError && <span className="text-status-shortage">Live search error: {searchError}</span>}
           </div>
         </div>
 
