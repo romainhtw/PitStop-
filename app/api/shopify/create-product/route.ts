@@ -82,11 +82,21 @@ export async function POST(req: NextRequest) {
     barcode?: string;
     price?: string;
     productType?: string;
+    options?: Array<{ name?: string; value?: string }>;
   };
 
   if (!body.title?.trim()) {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
   }
+
+  // Variant options (Size, Colour, …) — drop blanks, dedupe by name. Each option
+  // gets the single value from this invoice line so the created variant is named
+  // (e.g. "Size: M / Colour: Red") instead of "Default Title".
+  const cleanOptions = (body.options ?? [])
+    .map((o) => ({ name: (o.name ?? "").trim(), value: (o.value ?? "").trim() }))
+    .filter((o) => o.name && o.value)
+    .filter((o, i, arr) => arr.findIndex((x) => x.name.toLowerCase() === o.name.toLowerCase()) === i)
+    .slice(0, 3); // Shopify allows max 3 options per product
 
   // ── Step 1: create the product (default variant auto-created) ──────────────
   const productInput: Record<string, unknown> = {
@@ -94,6 +104,9 @@ export async function POST(req: NextRequest) {
     status: "ACTIVE",
   };
   if (body.productType) productInput.productType = body.productType;
+  if (cleanOptions.length > 0) {
+    productInput.productOptions = cleanOptions.map((o) => ({ name: o.name, values: [{ name: o.value }] }));
+  }
 
   const created = await shopifyFetch<CreateProductData>(shop, CREATE_PRODUCT_MUTATION, { input: productInput });
 

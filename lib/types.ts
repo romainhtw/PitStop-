@@ -27,6 +27,9 @@ export interface LineItem {
   retailPrice: number;
   gstApplicable: boolean;
   hidden?: boolean;
+  // Whether this line shares in the shipping/landed-cost allocation. Undefined =
+  // included (default). Set false to exclude it from the even shipping split.
+  shipIncluded?: boolean;
 }
 
 export interface VariantSuggestion {

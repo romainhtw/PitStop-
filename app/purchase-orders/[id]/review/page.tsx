@@ -16,6 +16,7 @@ interface CreateFormFields {
   barcode: string;
   price: string;
   productType: string;
+  options: Array<{ name: string; value: string }>;
 }
 
 function confidenceTier(score?: number): { label: string; className: string } {
@@ -72,6 +73,44 @@ function CreateProductForm({
         <div>
           <label className="text-[10px] text-text-secondary mb-0.5 block">Product Type</label>
           <input className={fieldCls} value={form?.productType ?? ""} onChange={(e) => onChange({ productType: e.target.value })} />
+        </div>
+      </div>
+      <div>
+        <label className="text-[10px] text-text-secondary mb-0.5 block">Variant options (size, colour…)</label>
+        <div className="space-y-1.5">
+          {(form?.options ?? []).map((opt, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <input
+                className={fieldCls}
+                placeholder="Option (e.g. Size)"
+                aria-label="Option name"
+                value={opt.name}
+                onChange={(e) => onChange({ options: (form.options ?? []).map((o, j) => (j === i ? { ...o, name: e.target.value } : o)) })}
+              />
+              <input
+                className={fieldCls}
+                placeholder="Value (e.g. M)"
+                aria-label="Option value"
+                value={opt.value}
+                onChange={(e) => onChange({ options: (form.options ?? []).map((o, j) => (j === i ? { ...o, value: e.target.value } : o)) })}
+              />
+              <button
+                onClick={() => onChange({ options: (form.options ?? []).filter((_, j) => j !== i) })}
+                aria-label="Remove option"
+                className="shrink-0 w-8 h-8 flex items-center justify-center text-text-tertiary hover:text-status-shortage text-lg leading-none"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {(form?.options?.length ?? 0) < 3 && (
+            <button
+              onClick={() => onChange({ options: [...(form?.options ?? []), { name: "", value: "" }] })}
+              className="text-xs text-accent hover:text-accent-dim font-medium"
+            >
+              + Add option
+            </button>
+          )}
         </div>
       </div>
       <div className="flex items-center justify-between pt-1">
@@ -149,7 +188,7 @@ export default function ReviewPurchaseOrderPage() {
   const [manualSearching, setManualSearching] = useState<Record<string, boolean>>({});
   const [showSearchFor, setShowSearchFor] = useState<Record<string, boolean>>({});
   const [showCreateFor, setShowCreateFor] = useState<Record<string, boolean>>({});
-  const [createFormData, setCreateFormData] = useState<Record<string, { title: string; sku: string; barcode: string; price: string; productType: string }>>({});
+  const [createFormData, setCreateFormData] = useState<Record<string, { title: string; sku: string; barcode: string; price: string; productType: string; options: Array<{ name: string; value: string }> }>>({});
   const [creating, setCreating] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -279,23 +318,29 @@ export default function ReviewPurchaseOrderPage() {
   const liveLandedCosts = useMemo(() => {
     if (!previewResult) return new Map<string, number>();
     const surcharge = (invoiceTotals?.freightShipping ?? 0) + (invoiceTotals?.insurance ?? 0) + (invoiceTotals?.customsTariffs ?? 0) + (invoiceTotals?.brokerageFees ?? 0);
+    // Even split across every included, visible line (mirrors the sync backend).
+    const includedCount = lineItems.filter((li) => !li.hidden && li.shipIncluded !== false).length;
+    const perLine = includedCount > 0 ? surcharge / includedCount : 0;
     const matched = previewResult.results.filter((r) => r.inventoryItemId);
-    const items = matched.map((r) => {
-      const li = lineItems.find((li) => li.id === r.lineItemId);
-      return { lineItemId: r.lineItemId, costPrice: li?.costPrice ?? 0, qty: li?.qty ?? 0 };
-    });
-    const invoiceValue = items.reduce((s, it) => s + it.costPrice * it.qty, 0);
     const map = new Map<string, number>();
-    for (const it of items) {
-      const share = invoiceValue > 0 ? (it.costPrice * it.qty) / invoiceValue : 0;
-      const allocation = surcharge > 0 ? (share * surcharge) / Math.max(it.qty, 1) : 0;
-      map.set(it.lineItemId, it.costPrice + allocation);
+    for (const r of matched) {
+      const li = lineItems.find((li) => li.id === r.lineItemId);
+      const costPrice = li?.costPrice ?? 0;
+      const qty = li?.qty ?? 0;
+      const included = li ? !li.hidden && li.shipIncluded !== false : false;
+      const allocation = included && perLine > 0 ? perLine / Math.max(qty, 1) : 0;
+      map.set(r.lineItemId, costPrice + allocation);
     }
     return map;
   }, [previewResult, invoiceTotals, lineItems]);
 
   const updateItem = (idx: number, patch: Partial<LineItem>) =>
     setLineItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+
+  // Shipping/landed-cost split preview — even share across ticked, visible lines.
+  const shipSurcharge = (invoiceTotals?.freightShipping ?? 0) + (invoiceTotals?.insurance ?? 0) + (invoiceTotals?.customsTariffs ?? 0) + (invoiceTotals?.brokerageFees ?? 0);
+  const shipIncludedCount = lineItems.filter((li) => !li.hidden && li.shipIncluded !== false).length;
+  const shipPerLine = shipIncludedCount > 0 ? shipSurcharge / shipIncludedCount : 0;
 
   const addRow = () =>
     setLineItems((prev) => [
@@ -412,6 +457,7 @@ export default function ReviewPurchaseOrderPage() {
         barcode: "",
         price: retailPrice > 0 ? retailPrice.toFixed(2) : "",
         productType: category || "",
+        options: [],
       },
     }));
     setShowCreateFor((prev) => ({ ...prev, [lineItemId]: true }));
@@ -455,11 +501,14 @@ export default function ReviewPurchaseOrderPage() {
     setCreateFormData((prev) => ({
       ...prev,
       [li.id]: {
-        title: [li.name, ...(li.optionValues ?? []).map((o) => o.optionValue)].filter(Boolean).join(" "),
+        title: li.name,
         sku: li.sku || "",
         barcode: li.barcode || "",
         price: li.retailPrice ? String(li.retailPrice) : "",
         productType: li.category || "",
+        // Prefill variant options from the parsed line (size/colour/…) so the
+        // created variant is named instead of "Default Title".
+        options: (li.optionValues ?? []).map((o) => ({ name: o.optionName, value: o.optionValue })),
       },
     }));
     setShowCreateFor((prev) => ({ ...prev, [li.id]: true }));
@@ -861,13 +910,14 @@ export default function ReviewPurchaseOrderPage() {
                 <th className="py-2 pr-2 w-28">Cost Price</th>
                 <th className="py-2 pr-2 w-28">Retail Price</th>
                 <th className="py-2 pr-2 w-16 text-center">GST</th>
+                <th className="py-2 pr-2 w-20 text-center" title="Share the invoice shipping/landed cost evenly across the ticked items">Ship</th>
                 <th className="py-2 w-16" />
               </tr>
             </thead>
             <tbody>
               {lineItems.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-text-tertiary text-sm">
+                  <td colSpan={9} className="py-8 text-center text-text-tertiary text-sm">
                     No items yet — use &ldquo;Search &amp; add product&rdquo; or &ldquo;Blank row&rdquo; to start.
                   </td>
                 </tr>
@@ -995,6 +1045,18 @@ export default function ReviewPurchaseOrderPage() {
                     <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={cellCls} value={li.costPrice} onChange={(e) => updateItem(idx, { costPrice: Number(e.target.value) || 0 })} /></td>
                     <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={cellCls} value={li.retailPrice} onChange={(e) => updateItem(idx, { retailPrice: Number(e.target.value) || 0 })} /></td>
                     <td className="py-1.5 pr-2 text-center"><input type="checkbox" checked={li.gstApplicable} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className="w-4 h-4 accent-accent" /></td>
+                    <td className="py-1.5 pr-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={li.shipIncluded !== false}
+                        onChange={(e) => updateItem(idx, { shipIncluded: e.target.checked })}
+                        className="w-4 h-4 accent-accent"
+                        aria-label="Include this item in the shipping split"
+                      />
+                      {shipSurcharge > 0 && !li.hidden && li.shipIncluded !== false && (
+                        <div className="text-[10px] text-text-tertiary mt-0.5 tabular-nums">+${shipPerLine.toFixed(2)}</div>
+                      )}
+                    </td>
                     {/* Hide + Delete */}
                     <td className="py-1.5">
                       <div className="flex items-center gap-0.5 justify-center">

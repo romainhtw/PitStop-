@@ -131,19 +131,21 @@ function titleScore(productTitle: string, lineItemName: string): number {
   return Math.round((score / totalWeight) * 90);
 }
 
+// Even (balanced) allocation: split the total surcharge equally across every
+// INCLUDED line, then divide each line's share by its qty to get a per-unit
+// landed-cost add-on. Lines the user excluded (shipIncluded === false) get 0.
+// Returns a per-unit landed-cost addition per item, index-aligned with `items`.
 function allocateLandedCosts(
-  items: Array<{ costPrice: number; qty: number }>,
+  items: Array<{ qty: number; included: boolean }>,
   totals: { freightShipping?: number; insurance?: number; customsTariffs?: number; brokerageFees?: number } | undefined
 ): number[] {
   if (!totals) return items.map(() => 0);
   const totalSurcharge = (totals.freightShipping ?? 0) + (totals.insurance ?? 0) + (totals.customsTariffs ?? 0) + (totals.brokerageFees ?? 0);
   if (totalSurcharge <= 0) return items.map(() => 0);
-  const invoiceValue = items.reduce((sum, it) => sum + it.costPrice * it.qty, 0);
-  if (invoiceValue <= 0) return items.map(() => 0);
-  return items.map((it) => {
-    const share = (it.costPrice * it.qty) / invoiceValue;
-    return parseFloat(((share * totalSurcharge) / Math.max(it.qty, 1)).toFixed(4));
-  });
+  const includedCount = items.filter((it) => it.included).length;
+  if (includedCount === 0) return items.map(() => 0);
+  const perLine = totalSurcharge / includedCount;
+  return items.map((it) => (it.included ? parseFloat((perLine / Math.max(it.qty, 1)).toFixed(4)) : 0));
 }
 
 export async function POST(req: NextRequest) {
@@ -328,7 +330,7 @@ export async function POST(req: NextRequest) {
     // then apply only matched lines' shares below. Allocating over matched-only
     // lines over-loads each matched unit's landed cost when some lines are unmatched.
     const landedCostAllocations = allocateLandedCosts(
-      visibleItems.map((it) => ({ costPrice: it.costPrice * exchangeRate, qty: it.qty })),
+      visibleItems.map((it) => ({ qty: it.qty, included: it.shipIncluded !== false })),
       po.invoiceTotals
     );
     const landedCostMap = new Map<string, number>();
