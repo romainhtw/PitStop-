@@ -192,17 +192,18 @@ export default function DashboardPage() {
     <div className="p-4 lg:p-8 max-w-7xl">
 
       {/* Page header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
         <div>
           <h1 className="font-sans text-2xl font-semibold text-text-primary tracking-tight">Dashboard</h1>
           <p className="text-xs text-text-tertiary mt-0.5 font-mono">Inventory at a glance</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/purchase-orders/new/manual">
-            <Button variant="secondary" size="sm">+ Manual order</Button>
+        {/* Primary actions — full-width stacked on mobile, inline on desktop */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Link href="/purchase-orders/new/manual" className="w-full sm:w-auto">
+            <Button variant="secondary" size="sm" className="w-full sm:w-auto min-h-[40px] sm:min-h-0">+ Manual order</Button>
           </Link>
-          <Link href="/purchase-orders/new">
-            <Button variant="primary" size="sm">+ Upload invoice</Button>
+          <Link href="/purchase-orders/new" className="w-full sm:w-auto">
+            <Button variant="primary" size="sm" className="w-full sm:w-auto min-h-[40px] sm:min-h-0">+ Upload invoice</Button>
           </Link>
         </div>
       </div>
