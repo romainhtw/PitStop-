@@ -337,7 +337,7 @@ export default function CatalogPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-sans font-semibold tracking-tight text-text-primary mb-0.5">Product Catalog</h1>
           <p className="text-text-tertiary text-sm font-mono">
@@ -346,11 +346,11 @@ export default function CatalogPage() {
               : "Pull your active Shopify products here"}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap lg:justify-end gap-2">
           {products.length > 0 && (
             <button
               onClick={handleExportXlsx}
-              className="inline-flex items-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors"
+              className="inline-flex items-center justify-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -361,28 +361,28 @@ export default function CatalogPage() {
           <button
             onClick={handleBackfillCollections}
             disabled={syncing || registering}
-            className="inline-flex items-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
+            className="inline-flex items-center justify-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
           >
             {syncing ? "…" : "Update Collections"}
           </button>
           <button
             onClick={handleRegisterWebhooks}
             disabled={registering || syncing}
-            className="inline-flex items-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
+            className="inline-flex items-center justify-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
           >
             {registering ? "Registering…" : "Enable Auto-Sync"}
           </button>
           <button
             onClick={openImportModal}
             disabled={syncing || registering}
-            className="inline-flex items-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
+            className="inline-flex items-center justify-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
           >
             Choose collections
           </button>
           <button
             onClick={() => handleSync()}
             disabled={syncing || registering}
-            className="inline-flex items-center gap-2 bg-accent hover:bg-accent-dim disabled:opacity-40 text-white text-sm font-medium px-4 py-2 border border-accent transition-colors"
+            className="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent-dim disabled:opacity-40 text-white text-sm font-medium px-4 py-2 border border-accent transition-colors col-span-2 sm:col-span-1"
           >
             {syncing ? (
               <>

@@ -707,7 +707,7 @@ export default function ReviewPurchaseOrderPage() {
 
       <div className={`${pdfPaneOpen && pdfUrl ? "flex-1 overflow-y-auto" : ""} p-10 max-w-6xl`}>
       <div className="mb-4"><BackButton /></div>
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 mb-8">
         <div>
           <h1 className="text-2xl font-sans font-semibold tracking-tight text-text-primary mb-0.5">Review Purchase Order</h1>
           <p className="text-text-secondary text-sm">
@@ -715,7 +715,7 @@ export default function ReviewPurchaseOrderPage() {
           </p>
         </div>
         {/* Always-visible actions */}
-        <div className="flex items-center gap-3 shrink-0 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
           {loaded && (
             <button
               onClick={handleSaveStay}
