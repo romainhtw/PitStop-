@@ -246,7 +246,8 @@ export async function POST(req: NextRequest) {
     // Upsert supplier in background — use waitUntil so Vercel doesn't freeze before the write completes
     if (parsed.supplier) {
       const supplierName = parsed.supplier as string;
-      const nameKey = supplierName.toLowerCase().trim();
+      // Firestore doc ids cannot contain "/" — strip slashes (e.g. "TMO SPORTS P/L").
+      const nameKey = supplierName.toLowerCase().trim().replace(/[/\\]+/g, "-");
       // Tenant-scoped doc id — see app/api/suppliers/[name]/route.ts
       const docId = `${merchantId}__${nameKey}`;
       waitUntil(
