@@ -14,12 +14,15 @@ export async function POST(req: NextRequest) {
   const shop = await requireShop(req);
   if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+  // Prefer the canonical app URL (stable custom domain) so webhooks register to a
+  // permanent address, not an ephemeral per-deploy Vercel URL.
+  const baseUrl = process.env.SHOPIFY_APP_URL
+    ?? process.env.NEXT_PUBLIC_APP_URL
     ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
 
   if (!baseUrl) {
     return NextResponse.json(
-      { error: "Set NEXT_PUBLIC_APP_URL env var to your Vercel URL (e.g. https://pitstop.vercel.app)" },
+      { error: "App URL not configured (set SHOPIFY_APP_URL)." },
       { status: 400 }
     );
   }
@@ -36,13 +39,20 @@ export async function POST(req: NextRequest) {
       };
     };
     const sub = data?.webhookSubscriptionCreate;
+    const errs = sub?.userErrors ?? [];
+    // "Address for this topic has already been taken" means the webhook is ALREADY
+    // registered at this URL — that's the desired state, treat it as success.
+    const alreadyActive = errs.some((e) => /already been taken|already exists/i.test(e.message));
+    const created = !!sub?.webhookSubscription;
     results.push({
       topic,
-      success: (sub?.userErrors?.length ?? 0) === 0 && !!sub?.webhookSubscription,
-      errors: sub?.userErrors ?? [],
+      success: created || alreadyActive,
+      alreadyActive,
+      errors: created || alreadyActive ? [] : errs,
       id: sub?.webhookSubscription?.id ?? null,
     });
   }
 
-  return NextResponse.json({ callbackUrl, results });
+  const okCount = results.filter((r) => r.success).length;
+  return NextResponse.json({ callbackUrl, results, ok: okCount === results.length, okCount, total: results.length });
 }

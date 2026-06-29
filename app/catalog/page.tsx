@@ -268,8 +268,13 @@ export default function CatalogPage() {
       const res = await apiFetch("/api/shopify/webhooks/register", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed");
-      const allOk = data.results.every((r: { success: boolean }) => r.success);
-      setSyncMsg(allOk ? "Webhooks registered — Shopify will now push updates automatically" : `Partial: ${JSON.stringify(data.results)}`);
+      const okCount = data.okCount ?? (data.results?.filter((r: { success: boolean }) => r.success).length ?? 0);
+      const total = data.total ?? (data.results?.length ?? 0);
+      setSyncMsg(
+        okCount === total
+          ? "Auto-sync is on — Shopify will push product updates automatically."
+          : `Auto-sync enabled for ${okCount} of ${total} updates. Try again, or contact support if it persists.`
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Registration failed");
     } finally {
