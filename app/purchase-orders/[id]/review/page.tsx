@@ -1178,10 +1178,10 @@ export default function ReviewPurchaseOrderPage() {
       )}
 
       {mathDiscrepancy && (
-        <div className="mb-5 p-4 rounded-lg bg-red-50 border border-red-300 text-red-800 text-sm">
-          <p className="font-semibold">Mathematical discrepancy — sync blocked</p>
-          <p className="mt-0.5 text-red-700">
-            Line items sum to <strong>${total.toFixed(2)}</strong> but invoice total is <strong>${invoiceTotals?.grandTotal?.toFixed(2)}</strong> (Δ ${Math.abs(total - (invoiceTotals?.grandTotal ?? 0)).toFixed(2)}). Correct the line items or totals before syncing.
+        <div className="mb-5 p-4 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm">
+          <p className="font-semibold">Heads up — line items don&apos;t match the invoice total</p>
+          <p className="mt-0.5 text-amber-800">
+            Line items sum to <strong>${total.toFixed(2)}</strong> but the invoice total is <strong>${invoiceTotals?.grandTotal?.toFixed(2)}</strong> (Δ ${Math.abs(total - (invoiceTotals?.grandTotal ?? 0)).toFixed(2)}). This is fine for a partial receive — hide the lines you&apos;re not receiving (eye icon). Otherwise, fix the items or totals before syncing.
           </p>
           {gstSwitchWouldFix && (
             <button
@@ -1211,7 +1211,7 @@ export default function ReviewPurchaseOrderPage() {
           ) : (
             <button
               onClick={handlePreview}
-              disabled={isBusy || mathDiscrepancy}
+              disabled={isBusy}
               className="inline-flex items-center gap-2 bg-accent hover:bg-accent-dim disabled:opacity-50 text-white text-sm font-medium px-6 py-2.5 rounded transition-colors"
             >
               {previewing ? (
