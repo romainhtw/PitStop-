@@ -204,8 +204,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Resolve location GID from this shop's primary active location
-    const locationGid = await getPrimaryLocationGid(shop);
+    // Use the location the user picked on the PO (a Shopify location GID) when
+    // present; otherwise fall back to this shop's primary active location. Legacy
+    // POs with a non-GID location value also fall back to primary.
+    const pickedLocation = (po.location || "").trim();
+    const locationGid = pickedLocation.startsWith("gid://shopify/Location/")
+      ? pickedLocation
+      : await getPrimaryLocationGid(shop);
     if (!locationGid) {
       return NextResponse.json({ error: "No active location found for this shop." }, { status: 500 });
     }
@@ -214,7 +219,7 @@ export async function POST(req: NextRequest) {
     const locStatus = await checkLocation(shop, locationGid);
     if (locStatus.isActive === false && locStatus.checked === true) {
       return NextResponse.json({
-        error: `The primary location is inactive or archived in Shopify. Activate it before syncing.`,
+        error: `The selected location is inactive or archived in Shopify. Activate it before syncing.`,
         locationInactive: true,
       }, { status: 400 });
     }

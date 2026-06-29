@@ -201,7 +201,9 @@ export async function POST(req: NextRequest) {
       currency: (parsed.currency as string) || "AUD",
       taxVatNumber: (parsed.taxVatNumber as string) || "",
       orderNumber: (parsed.orderNumber as string) || "",
-      location: "In-Store Fitzgerald St",
+      // Left blank — the review screen defaults it to the shop's own primary
+      // Shopify location (never hard-code another store's location).
+      location: "",
       paymentTerms: (parsed.paymentTerms as string) || "",
       invoiceTotals: totals ? {
         subtotal: Number(totals.subtotal) || 0,

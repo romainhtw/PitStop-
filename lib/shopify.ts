@@ -92,6 +92,21 @@ export async function getPrimaryLocationGid(shop: string): Promise<string | null
   return result?.data?.locations?.nodes?.[0]?.id ?? null;
 }
 
+const LOCATIONS_QUERY = /* GraphQL */ `
+  query GetLocations {
+    locations(first: 20, query: "status:active") {
+      nodes { id name }
+    }
+  }
+`;
+
+// The shop's own active Shopify locations — used to populate the PO location
+// picker per-merchant (never hard-code another store's locations).
+export async function fetchActiveLocations(shop: string): Promise<Array<{ id: string; name: string }>> {
+  const result = await shopifyFetch<{ locations: { nodes: Array<{ id: string; name: string }> } }>(shop, LOCATIONS_QUERY);
+  return result?.data?.locations?.nodes ?? [];
+}
+
 export const FIND_VARIANT_QUERY = /* GraphQL */ `
   query FindVariant($query: String!) {
     productVariants(first: 10, query: $query) {

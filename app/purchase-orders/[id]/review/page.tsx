@@ -146,7 +146,8 @@ export default function ReviewPurchaseOrderPage() {
   const [currency, setCurrency] = useState("AUD");
   const [taxVatNumber, setTaxVatNumber] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
-  const [location, setLocation] = useState<PurchaseOrder["location"]>("In-Store Fitzgerald St");
+  const [location, setLocation] = useState<PurchaseOrder["location"]>("");
+  const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [paymentTerms, setPaymentTerms] = useState("");
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [shippingCost, setShippingCost] = useState(0);
@@ -215,7 +216,7 @@ export default function ReviewPurchaseOrderPage() {
         setCurrency(po.currency || "AUD");
         setTaxVatNumber(po.taxVatNumber || "");
         setOrderNumber(po.orderNumber || "");
-        setLocation(po.location || "In-Store Fitzgerald St");
+        setLocation(po.location || "");
         setPaymentTerms(po.paymentTerms || "");
         setShippingCost(Number(po.shippingCost) || 0);
         if (po.exchangeRate) setExchangeRate(po.exchangeRate);
@@ -277,6 +278,19 @@ export default function ReviewPurchaseOrderPage() {
     }
     load();
   }, [id]);
+
+  // Load THIS shop's real Shopify locations for the picker, and default to the
+  // primary one when the PO has no valid location (or a legacy/hard-coded value).
+  useEffect(() => {
+    apiFetch("/api/shopify/locations")
+      .then((r) => (r.ok ? r.json() : { locations: [] }))
+      .then((data: { locations?: Array<{ id: string; name: string }> }) => {
+        const list = data.locations ?? [];
+        setLocations(list);
+        setLocation((prev) => (prev && list.some((l) => l.id === prev) ? prev : list[0]?.id ?? ""));
+      })
+      .catch(() => {});
+  }, []);
 
   const subtotal = useMemo(
     () => lineItems.reduce((s, li) => s + li.qty * li.costPrice, 0),
@@ -789,8 +803,10 @@ export default function ReviewPurchaseOrderPage() {
           <div>
             <label className="text-xs text-text-secondary mb-1 block">Location</label>
             <select className={inputCls} value={location} onChange={(e) => setLocation(e.target.value as PurchaseOrder["location"])}>
-              <option value="In-Store Fitzgerald St">In-Store Fitzgerald St</option>
-              <option value="Warehouse">Warehouse</option>
+              {locations.length === 0 && <option value="">Loading locations…</option>}
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
             </select>
           </div>
           <div>
