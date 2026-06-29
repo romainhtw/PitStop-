@@ -9,6 +9,7 @@ import {
   updateInventoryItemCost,
   checkLocation,
   getPrimaryLocationGid,
+  fetchActiveLocations,
   activateInventoryItems,
 } from "@/lib/shopify";
 import { requireShop } from "@/lib/shopify/requireShop";
@@ -207,10 +208,17 @@ export async function POST(req: NextRequest) {
     // Use the location the user picked on the PO (a Shopify location GID) when
     // present; otherwise fall back to this shop's primary active location. Legacy
     // POs with a non-GID location value also fall back to primary.
-    const pickedLocation = (po.location || "").trim();
-    const locationGid = pickedLocation.startsWith("gid://shopify/Location/")
-      ? pickedLocation
-      : await getPrimaryLocationGid(shop);
+    // po.location holds the location NAME the user picked (or a legacy GID).
+    // Resolve it to a GID against this shop's locations; fall back to primary.
+    const picked = (po.location || "").trim();
+    let locationGid: string | null = null;
+    if (picked.startsWith("gid://shopify/Location/")) {
+      locationGid = picked; // back-compat with older POs that stored a GID
+    } else if (picked) {
+      const locs = await fetchActiveLocations(shop);
+      locationGid = locs.find((l) => l.name === picked)?.id ?? null;
+    }
+    if (!locationGid) locationGid = await getPrimaryLocationGid(shop);
     if (!locationGid) {
       return NextResponse.json({ error: "No active location found for this shop." }, { status: 500 });
     }

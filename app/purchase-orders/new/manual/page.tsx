@@ -39,7 +39,7 @@ export default function ManualPurchaseOrderPage() {
       .then((data: { locations?: Array<{ id: string; name: string }> }) => {
         const list = data.locations ?? [];
         setLocations(list);
-        setLocation((prev) => (prev && list.some((l) => l.id === prev) ? prev : list[0]?.id ?? ""));
+        setLocation((prev) => (prev && list.some((l) => l.name === prev) ? prev : list[0]?.name ?? ""));
       })
       .catch(() => {});
   }, []);
@@ -171,7 +171,7 @@ export default function ManualPurchaseOrderPage() {
             <select className={inputCls} value={location} onChange={(e) => setLocation(e.target.value as PurchaseOrder["location"])}>
               {locations.length === 0 && <option value="">Loading locations…</option>}
               {locations.map((l) => (
-                <option key={l.id} value={l.id}>{l.name}</option>
+                <option key={l.id} value={l.name}>{l.name}</option>
               ))}
             </select>
           </div>

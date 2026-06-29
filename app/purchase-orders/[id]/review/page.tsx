@@ -287,7 +287,7 @@ export default function ReviewPurchaseOrderPage() {
       .then((data: { locations?: Array<{ id: string; name: string }> }) => {
         const list = data.locations ?? [];
         setLocations(list);
-        setLocation((prev) => (prev && list.some((l) => l.id === prev) ? prev : list[0]?.id ?? ""));
+        setLocation((prev) => (prev && list.some((l) => l.name === prev) ? prev : list[0]?.name ?? ""));
       })
       .catch(() => {});
   }, []);
@@ -805,7 +805,7 @@ export default function ReviewPurchaseOrderPage() {
             <select className={inputCls} value={location} onChange={(e) => setLocation(e.target.value as PurchaseOrder["location"])}>
               {locations.length === 0 && <option value="">Loading locations…</option>}
               {locations.map((l) => (
-                <option key={l.id} value={l.id}>{l.name}</option>
+                <option key={l.id} value={l.name}>{l.name}</option>
               ))}
             </select>
           </div>
@@ -1478,7 +1478,7 @@ export default function ReviewPurchaseOrderPage() {
                           <td className="px-4 py-3">
                             {(r.status === "synced" || isConfirmed) && (
                               <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full" title={r.matchedFromCache ? "Matched from saved mapping" : undefined}>
-                                ✅ {isConfirmed ? "Will sync (matched)" : r.matchedFromCache ? "Will sync · cached" : "Will sync"}
+                                ✅ {isConfirmed ? "Will sync (matched)" : "Will sync"}
                               </span>
                             )}
                             {r.status === "not_found" && !isConfirmed && (
@@ -1738,7 +1738,7 @@ export default function ReviewPurchaseOrderPage() {
                     <td className="px-4 py-3">
                       {r.status === "synced" && (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full" title={r.matchedFromCache ? "Matched from saved mapping" : undefined}>
-                          ✅ Synced{r.matchedFromCache && <span className="text-emerald-500 ml-0.5">·cached</span>}
+                          ✅ Synced
                         </span>
                       )}
                       {r.status === "not_found" && <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded-full">⚠️ Not found</span>}
