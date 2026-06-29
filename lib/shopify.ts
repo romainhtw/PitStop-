@@ -421,6 +421,7 @@ export const CATALOG_QUERY = /* GraphQL */ `
                 barcode
                 price
                 compareAtPrice
+                inventoryQuantity
                 inventoryItem { id }
               }
             }
@@ -452,6 +453,7 @@ interface CatalogData {
               barcode: string;
               price: string;
               compareAtPrice: string | null;
+              inventoryQuantity: number | null;
               inventoryItem: { id: string };
             };
           }>;
@@ -471,6 +473,7 @@ export interface CatalogVariant {
   price: number;
   compareAtPrice: number | null;
   inventoryItemId: string;
+  inventoryQuantity: number;
   productType: string;
   collections: string[];
   status: string;
@@ -501,6 +504,7 @@ export async function fetchVariantsPage(
         price: parseFloat(v.price) || 0,
         compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : null,
         inventoryItemId: v.inventoryItem.id,
+        inventoryQuantity: v.inventoryQuantity ?? 0,
         productType: p.productType || "",
         collections: p.collections.edges.map((e) => e.node.title),
         status: p.status,

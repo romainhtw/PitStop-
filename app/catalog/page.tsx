@@ -179,8 +179,7 @@ export default function CatalogPage() {
       SKU: p.sku || "",
       Barcode: p.barcode || "",
       Collection: (p.collections ?? [])[0] || "",
-      "In Store": p.onHandQtyStore ?? 0,
-      Warehouse: p.onHandQtyWarehouse ?? 0,
+      Stock: (p.onHandQtyStore ?? 0) + (p.onHandQtyWarehouse ?? 0),
       "Cost ($)": p.unitCost != null ? p.unitCost : "",
       "Retail ($)": p.price,
       "Margin (%)": p.unitCost && p.price > 0 ? parseFloat((((p.price - p.unitCost) / p.price) * 100).toFixed(1)) : "",
@@ -535,8 +534,7 @@ export default function CatalogPage() {
                   <th className="px-4 py-2.5 text-[10px] font-mono font-semibold uppercase tracking-widest text-text-tertiary">Variant</th>
                   <th className="px-4 py-2.5 text-[10px] font-mono font-semibold uppercase tracking-widest text-text-tertiary">SKU</th>
                   <th className="px-4 py-2.5 text-[10px] font-mono font-semibold uppercase tracking-widest text-text-tertiary">Collection</th>
-                  <SortTh col="onHand" label="In Store" />
-                  <SortTh col="onHand" label="Whouse" />
+                  <SortTh col="onHand" label="Stock" />
                   <SortTh col="unitCost" label="Cost" />
                   <SortTh col="price" label="Retail" />
                   <SortTh col="margin" label="Margin" />
@@ -545,7 +543,7 @@ export default function CatalogPage() {
               <tbody>
                 {sorted.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-text-tertiary font-mono text-sm">
+                    <td colSpan={8} className="px-4 py-12 text-center text-text-tertiary font-mono text-sm">
                       No results
                     </td>
                   </tr>
@@ -554,8 +552,7 @@ export default function CatalogPage() {
                     const margin = p.unitCost && p.price > 0
                       ? ((p.price - p.unitCost) / p.price) * 100
                       : null;
-                    const storeQty = p.onHandQtyStore ?? 0;
-                    const whQty = p.onHandQtyWarehouse ?? 0;
+                    const stockQty = (p.onHandQtyStore ?? 0) + (p.onHandQtyWarehouse ?? 0);
                     return (
                       <tr key={p.variantId} className="border-b border-border-0 last:border-0 hover:bg-surface-2 transition-colors">
                         <td className="px-4 py-3 font-medium text-text-primary">{p.productTitle}</td>
@@ -575,8 +572,7 @@ export default function CatalogPage() {
                             </span>
                           ) : <span className="text-text-tertiary">—</span>}
                         </td>
-                        <td className="px-4 py-3 text-right"><StockBadge qty={storeQty} /></td>
-                        <td className="px-4 py-3 text-right"><StockBadge qty={whQty} /></td>
+                        <td className="px-4 py-3 text-right"><StockBadge qty={stockQty} /></td>
                         <td className="px-4 py-3 text-right text-text-secondary text-xs font-mono tabular-nums">
                           {p.unitCost != null ? `$${p.unitCost.toFixed(2)}` : <span className="text-text-tertiary">—</span>}
                         </td>
