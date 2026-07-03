@@ -96,7 +96,10 @@ export async function POST(req: NextRequest) {
       shopifyUpdatedAt: payload.updated_at,
       syncedAt,
     };
-    batch.set(col.doc(String(v.id)), product);
+    // MERGE — never overwrite the doc wholesale: this payload has no stock/cost
+    // fields, so a plain set() would wipe onHandQty*/unitCost from the catalog
+    // mirror. Merge updates only the product metadata and preserves inventory.
+    batch.set(col.doc(String(v.id)), product, { merge: true });
   }
 
   await batch.commit();

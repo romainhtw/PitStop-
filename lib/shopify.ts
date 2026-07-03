@@ -540,6 +540,16 @@ export const REGISTER_WEBHOOK_MUTATION = /* GraphQL */ `
   }
 `;
 
+// Lists the shop's currently-registered webhook topics so the UI can tell the
+// merchant whether auto-sync is already on (rather than only offering to enable it).
+export const LIST_WEBHOOKS_QUERY = /* GraphQL */ `
+  query ListWebhooks {
+    webhookSubscriptions(first: 100) {
+      edges { node { topic } }
+    }
+  }
+`;
+
 interface AdjustInventoryData {
   inventoryAdjustQuantities: {
     userErrors: Array<{ field: string; message: string }>;

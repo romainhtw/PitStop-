@@ -1,14 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
-import { shopifyFetch, REGISTER_WEBHOOK_MUTATION } from "@/lib/shopify";
+import { shopifyFetch, REGISTER_WEBHOOK_MUTATION, LIST_WEBHOOKS_QUERY } from "@/lib/shopify";
 import { requireShop } from "@/lib/shopify/requireShop";
 
 export const runtime = "nodejs";
 
-const TOPICS = [
-  "PRODUCTS_CREATE",
-  "PRODUCTS_UPDATE",
-  "PRODUCTS_DELETE",
-] as const;
+// Each topic → the endpoint that handles it. Product topics keep the catalog's
+// product metadata fresh; inventory_levels/update keeps STOCK fresh (product
+// webhooks do NOT fire on inventory-only changes like sales).
+const TOPICS: Array<{ topic: string; path: string }> = [
+  { topic: "PRODUCTS_CREATE", path: "products" },
+  { topic: "PRODUCTS_UPDATE", path: "products" },
+  { topic: "PRODUCTS_DELETE", path: "products" },
+  { topic: "INVENTORY_LEVELS_UPDATE", path: "inventory" },
+];
+
+// GET — report whether auto-sync is currently on (all topics registered), so the
+// catalog can show live status instead of only offering to enable it.
+export async function GET(req: NextRequest) {
+  const shop = await requireShop(req);
+  if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+
+  try {
+    const res = await shopifyFetch<{
+      webhookSubscriptions: { edges: Array<{ node: { topic: string } }> };
+    }>(shop, LIST_WEBHOOKS_QUERY);
+    const active = new Set((res.data?.webhookSubscriptions?.edges ?? []).map((e) => e.node.topic));
+    const registered = TOPICS.filter((t) => active.has(t.topic)).map((t) => t.topic);
+    const total = TOPICS.length;
+    return NextResponse.json({
+      enabled: registered.length === total,
+      registered,
+      okCount: registered.length,
+      total,
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { enabled: false, error: err instanceof Error ? err.message : "status check failed" },
+      { status: 200 }
+    );
+  }
+}
 
 export async function POST(req: NextRequest) {
   const shop = await requireShop(req);
@@ -27,10 +58,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const callbackUrl = `${baseUrl}/api/shopify/webhooks/products`;
   const results = [];
 
-  for (const topic of TOPICS) {
+  for (const { topic, path } of TOPICS) {
+    const callbackUrl = `${baseUrl}/api/shopify/webhooks/${path}`;
     const result = await shopifyFetch(shop, REGISTER_WEBHOOK_MUTATION, { topic, callbackUrl });
     const data = result?.data as {
       webhookSubscriptionCreate: {
@@ -54,5 +85,5 @@ export async function POST(req: NextRequest) {
   }
 
   const okCount = results.filter((r) => r.success).length;
-  return NextResponse.json({ callbackUrl, results, ok: okCount === results.length, okCount, total: results.length });
+  return NextResponse.json({ baseUrl, results, ok: okCount === results.length, okCount, total: results.length });
 }

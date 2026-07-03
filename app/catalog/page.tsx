@@ -45,6 +45,7 @@ export default function CatalogPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [autoSync, setAutoSync] = useState<"unknown" | "on" | "off">("unknown");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -104,6 +105,22 @@ export default function CatalogPage() {
   }
 
   useEffect(() => { load(); }, []);
+
+  // Reflect whether Shopify auto-sync is currently on, so the merchant sees live
+  // status rather than an Enable button that gives no feedback once it's done.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch("/api/shopify/webhooks/register");
+        const data = await res.json();
+        if (!cancelled) setAutoSync(data.enabled ? "on" : "off");
+      } catch {
+        if (!cancelled) setAutoSync("unknown");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const productTypes = useMemo(() => {
     const types = new Set(products.flatMap((p) => p.collections ?? []).filter(Boolean));
@@ -269,9 +286,11 @@ export default function CatalogPage() {
       if (!res.ok) throw new Error(data.error || "Registration failed");
       const okCount = data.okCount ?? (data.results?.filter((r: { success: boolean }) => r.success).length ?? 0);
       const total = data.total ?? (data.results?.length ?? 0);
+      const allOn = total > 0 && okCount === total;
+      setAutoSync(allOn ? "on" : "off");
       setSyncMsg(
-        okCount === total
-          ? "Auto-sync is on — Shopify will push product updates automatically."
+        allOn
+          ? "Auto-sync is on — Shopify pushes product and stock changes automatically."
           : `Auto-sync enabled for ${okCount} of ${total} updates. Try again, or contact support if it persists.`
       );
     } catch (e) {
@@ -372,9 +391,27 @@ export default function CatalogPage() {
           <button
             onClick={handleRegisterWebhooks}
             disabled={registering || syncing}
-            className="inline-flex items-center justify-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
+            title={
+              autoSync === "on"
+                ? "Auto-sync is on — Shopify pushes product & stock changes. Click to re-check."
+                : "Turn on automatic updates from Shopify (products & stock)."
+            }
+            className={
+              autoSync === "on"
+                ? "inline-flex items-center justify-center gap-1.5 text-sm border border-green-600/40 bg-green-600/10 text-green-700 hover:border-green-600/60 px-3 py-2 transition-colors disabled:opacity-40"
+                : "inline-flex items-center justify-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
+            }
           >
-            {registering ? "Registering…" : "Enable Auto-Sync"}
+            {registering ? (
+              "Registering…"
+            ) : autoSync === "on" ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-green-600" />
+                Auto-Sync On
+              </>
+            ) : (
+              "Enable Auto-Sync"
+            )}
           </button>
           <button
             onClick={openImportModal}
