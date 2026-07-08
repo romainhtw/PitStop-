@@ -10,8 +10,6 @@ import { apiFetch } from "@/lib/apiClient";
  * it when stale (stale-while-revalidate) without blocking the UI. Only the very
  * first ever load (empty IndexedDB) waits on the network.
  */
-const TTL_MS = 30 * 60 * 1000; // consider cache stale after 30 min → background refresh
-
 interface CacheRow {
   key: string;
   products: ShopifyProduct[];
@@ -73,7 +71,11 @@ export async function loadCatalog(
 
   // 1. In-memory (instant)
   if (mem) {
-    if (Date.now() - memTs > TTL_MS) revalidate(onRevalidated);
+    // Always revalidate in the background so stock/cost changes (sales, syncs,
+    // webhooks) land within ~1s of opening the catalog — the cache is only for
+    // instant paint, never a reason to show stale numbers. TTL is retained as a
+    // hint but no longer gates whether we refresh.
+    revalidate(onRevalidated);
     return mem;
   }
 
@@ -83,7 +85,7 @@ export async function loadCatalog(
     if (row?.products?.length) {
       mem = row.products;
       memTs = row.ts;
-      if (Date.now() - row.ts > TTL_MS) revalidate(onRevalidated);
+      revalidate(onRevalidated);
       return row.products;
     }
   } catch { /* fall through to cold fetch */ }
