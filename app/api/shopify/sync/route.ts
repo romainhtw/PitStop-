@@ -15,7 +15,7 @@ import {
 import { requireShop } from "@/lib/shopify/requireShop";
 import { hasBillingAccess } from "@/lib/shopify/billing";
 import { lookupMapping, saveMapping, lookupNameMapping, saveNameMapping } from "@/lib/adminMappings";
-import type { AuditLog, PurchaseOrder, LineSyncResult, SyncResult, VariantSuggestion } from "@/lib/types";
+import type { PurchaseOrder, LineSyncResult, SyncResult, VariantSuggestion } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -489,7 +489,7 @@ export async function POST(req: NextRequest) {
       await activateInventoryItems(shop, notStocked, locationGid);
     }
 
-    const { userErrors, groupId } = await batchSetInventory(
+    const { userErrors } = await batchSetInventory(
       shop,
       writeItems,
       locationGid,
@@ -560,31 +560,7 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date().toISOString(),
     });
 
-    if (syncResult.successCount > 0) {
-      const auditLog: AuditLog = {
-        id: `${poId}_${Date.now()}`,
-        merchantId,
-        poId,
-        supplier: po.supplier,
-        invoiceNumber: po.invoiceNumber,
-        location: po.location,
-        syncedAt: syncResult.syncedAt,
-        successCount: syncResult.successCount,
-        notFoundCount: syncResult.notFoundCount,
-        errorCount: syncResult.errorCount,
-        referenceDocumentUri,
-        items: results.map((r) => ({
-          name: r.name,
-          sku: r.sku,
-          status: r.status,
-          delta: r.delta,
-          landedCost: r.landedCost,
-        })),
-      };
-      await adminDb.collection("auditLogs").doc(auditLog.id).set(auditLog).catch(() => {});
-    }
-
-    return NextResponse.json({ ...syncResult, dryRun: false, auditGroupId: groupId });
+    return NextResponse.json({ ...syncResult, dryRun: false });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

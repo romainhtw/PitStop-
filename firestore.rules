@@ -81,13 +81,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ── /auditLogs ────────────────────────────────────────────────────────────
-    // Append-only from server. Clients may read their own logs.
-    match /auditLogs/{logId} {
-      allow read:  if isReadingOwnTenant();
-      allow write: if false;
-    }
-
     // ── /stripeEvents ─────────────────────────────────────────────────────────
     // Internal idempotency log — server-only.
     match /stripeEvents/{eventId} {

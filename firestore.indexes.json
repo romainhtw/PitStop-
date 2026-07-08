@@ -90,22 +90,6 @@
         { "fieldPath": "status",     "order": "ASCENDING" },
         { "fieldPath": "executedAt", "order": "DESCENDING" }
       ]
-    },
-    {
-      "collectionGroup": "auditLogs",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "merchantId", "order": "ASCENDING" },
-        { "fieldPath": "syncedAt",   "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "auditLogs",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "merchantId", "order": "ASCENDING" },
-        { "fieldPath": "timestamp",  "order": "DESCENDING" }
-      ]
     }
   ],
   "fieldOverrides": []

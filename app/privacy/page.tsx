@@ -41,8 +41,7 @@ export default function PrivacyPage() {
               <li>Inventory quantities and item costs, which the App updates on your instruction (write).</li>
               <li>Store locations (read), to apply stock changes to the correct location.</li>
               <li>
-                Supplier invoices and purchase-order details you upload or enter, and an audit log of the sync
-                actions you perform.
+                Supplier invoices and purchase-order details you upload or enter.
               </li>
             </ul>
             <p className="mt-2 font-medium text-text-primary">

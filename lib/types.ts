@@ -131,27 +131,6 @@ export interface ShopifyProduct {
   unitCost?: number | null;
 }
 
-export interface AuditLog {
-  id: string;
-  merchantId?: string;
-  poId: string;
-  supplier: string;
-  invoiceNumber: string;
-  location: string;
-  syncedAt: string;
-  successCount: number;
-  notFoundCount: number;
-  errorCount: number;
-  referenceDocumentUri: string;
-  items: Array<{
-    name: string;
-    sku: string;
-    status: string;
-    delta?: number;
-    landedCost?: number;
-  }>;
-}
-
 export interface PurchaseOrder {
   id: string;
   merchantId?: string;
