@@ -93,6 +93,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ── /invoiceUsage ─────────────────────────────────────────────────────────
+    // Per-shop monthly invoice-parsing counter. Written and read only by the
+    // billing quota gate via Admin SDK — never exposed to clients.
+    match /invoiceUsage/{usageId} {
+      allow read, write: if false;
+    }
+
     // ── Default deny ──────────────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

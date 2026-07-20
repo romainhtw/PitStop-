@@ -83,8 +83,27 @@ export default function NewPurchaseOrderPage() {
   const [dragging, setDragging] = useState(false);
   const [filename, setFilename] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; action?: "upgrade" | "contact" } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Free-tier merchants who hit the monthly cap can jump straight to the paid
+  // (100/mo) plan. Reuse the billing-status flow to fetch a fresh Shopify
+  // confirmation URL, then break out of the embedded iframe to it.
+  const handleUpgrade = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/shopify/billing/status");
+      const data = (await res.json()) as { confirmationUrl?: string | null };
+      if (data.confirmationUrl) {
+        try {
+          window.top!.location.href = data.confirmationUrl;
+        } catch {
+          window.open(data.confirmationUrl, "_top");
+        }
+      }
+    } catch {
+      /* leave the user on the block message; Contact support is still available */
+    }
+  }, []);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -96,7 +115,7 @@ export default function NewPurchaseOrderPage() {
         ((file.type === "" || file.type === "application/octet-stream") &&
           /\.pdf$/i.test(file.name));
       if (!looksPdf) {
-        setError("Please upload a PDF file.");
+        setError({ message: "Please upload a PDF file." });
         return;
       }
       setFilename(file.name);
@@ -116,13 +135,23 @@ export default function NewPurchaseOrderPage() {
           );
         }
 
+        // Monthly quota reached — show the block message with an upgrade (free)
+        // or contact (paid) call to action.
+        if (data.error === "QUOTA_EXCEEDED") {
+          setError({
+            message: (data.message as string) || "Monthly invoice limit reached.",
+            action: data.tier === "paid" ? "contact" : "upgrade",
+          });
+          setLoading(false);
+          return;
+        }
         // Prefer a human-readable `message` (e.g. billing check couldn't be
         // verified — 503) over the raw error code.
         if (data.error) throw new Error((data.message as string) || (data.error as string));
         if (!data.id) throw new Error("Unexpected response from server — please try again.");
         router.push(`/purchase-orders/${data.id}/review`);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Unknown error");
+        setError({ message: e instanceof Error ? e.message : "Unknown error" });
         setLoading(false);
       }
     },
@@ -198,7 +227,23 @@ export default function NewPurchaseOrderPage() {
 
       {error && (
         <div className="mt-6 p-4 rounded bg-red-50 border border-red-200 text-red-700 text-sm">
-          {error}
+          <p>{error.message}</p>
+          {error.action === "upgrade" && (
+            <button
+              onClick={handleUpgrade}
+              className="mt-3 inline-flex items-center font-semibold text-accent hover:underline"
+            >
+              Upgrade to 100 invoices/month →
+            </button>
+          )}
+          {error.action === "contact" && (
+            <a
+              href="/support"
+              className="mt-3 inline-flex items-center font-semibold text-accent hover:underline"
+            >
+              Contact support →
+            </a>
+          )}
         </div>
       )}
     </div>

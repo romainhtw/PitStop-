@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { shopifyFetch, getPrimaryLocationGid } from "@/lib/shopify";
 import { requireShop } from "@/lib/shopify/requireShop";
-import { checkBillingAccess, billingBlock } from "@/lib/shopify/billing";
+import { getPlanTier, appAccessBlock } from "@/lib/shopify/billing";
 
 export const runtime = "nodejs";
 
@@ -74,8 +74,8 @@ interface UpdateVariantData {
 export async function POST(req: NextRequest) {
   const shop = await requireShop(req);
   if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  const billing = billingBlock(await checkBillingAccess(shop));
-  if (billing) return NextResponse.json(billing.body, { status: billing.status });
+  const access = appAccessBlock(await getPlanTier(shop));
+  if (access) return NextResponse.json(access.body, { status: access.status });
 
   const body = (await req.json()) as {
     title: string;
