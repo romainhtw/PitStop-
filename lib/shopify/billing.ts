@@ -4,7 +4,7 @@ export const PLAN = {
   name: "PitStop",
   amount: 19,
   currency: "USD",
-  trialDays: 30,
+  trialDays: 14,
 } as const;
 
 // ── Dev-store detection ────────────────────────────────────────────────────────
@@ -48,25 +48,27 @@ export async function getActiveSubscription(
   }
 }
 
-// ── Server-side billing enforcement ────────────────────────────────────────────
-// Dev stores are always allowed (for testing/App Store review); every other shop
-// must have an ACTIVE subscription before it can use paid/mutating features.
+// ── Plan tier & access ─────────────────────────────────────────────────────────
+// Freemium model:
+//   "free"    → no active subscription. The app is fully usable, but invoice
+//               parsing is capped at INVOICE_QUOTA.free per calendar month.
+//   "paid"    → an ACTIVE recurring subscription. Cap raised to INVOICE_QUOTA.paid.
+//   "dev"     → partner development store (testing / App Store review). Uncapped.
+//   "unknown" → couldn't verify the subscription (transient Shopify/API error).
 //
-// Tri-state so callers can tell the two blocking cases apart:
-//   "active"       → allow the action
-//   "none"         → verified: no active subscription → 402 "subscription required"
-//   "check_failed" → couldn't verify (transient Shopify/API error) → 503 "retry",
-//                    NEVER tell a possibly-paying merchant to subscribe.
-// Still fails closed: both "none" and "check_failed" block the action; only the
-// message differs.
-export type BillingAccess = "active" | "none" | "check_failed";
+// Only "unknown" blocks app access (fail closed with a retry — NEVER tell a
+// possibly-paying merchant to subscribe). Free and paid both get in; the monthly
+// quota at the invoice-parsing route is what separates the tiers.
+export const INVOICE_QUOTA = { free: 5, paid: 100 } as const;
 
-export async function checkBillingAccess(shop: string): Promise<BillingAccess> {
-  // Dev-store detection is best-effort: if it fails we simply treat the shop as
-  // non-dev and let the subscription check below be authoritative.
+export type PlanTier = "dev" | "paid" | "free" | "unknown";
+
+export async function getPlanTier(shop: string): Promise<PlanTier> {
+  // Dev-store detection is best-effort: if it fails we fall through and let the
+  // subscription check below be authoritative.
   try {
     const dev = await shopifyFetch<ShopPlanData>(shop, `{ shop { plan { partnerDevelopment } } }`);
-    if (dev?.data?.shop?.plan?.partnerDevelopment === true) return "active";
+    if (dev?.data?.shop?.plan?.partnerDevelopment === true) return "dev";
   } catch {
     /* fall through to the subscription check */
   }
@@ -77,29 +79,47 @@ export async function checkBillingAccess(shop: string): Promise<BillingAccess> {
       `{ currentAppInstallation { activeSubscriptions { id name status } } }`
     );
     // A GraphQL-level error or missing data means we genuinely could not verify.
-    if (res.errors?.length || !res.data) return "check_failed";
+    if (res.errors?.length || !res.data) return "unknown";
     const subs = res.data.currentAppInstallation?.activeSubscriptions ?? [];
-    return subs.some((s) => s.status === "ACTIVE") ? "active" : "none";
+    return subs.some((s) => s.status === "ACTIVE") ? "paid" : "free";
   } catch {
     // Network / 5xx / max-retries — couldn't reach billing.
-    return "check_failed";
+    return "unknown";
   }
 }
 
-// Maps a billing state to the response a route should send, or null to proceed.
-// Keeps the 402-vs-503 messaging identical across every gated route.
-export function billingBlock(
-  access: BillingAccess
+// Monthly invoice-parsing cap for a tier. Infinity = uncapped (dev stores).
+// "unknown" falls back to the paid cap so a transient billing-check failure never
+// throttles a paying merchant below their entitlement (access is still gated
+// separately by appAccessBlock, which fails closed on "unknown").
+export function invoiceQuotaFor(tier: PlanTier): number {
+  switch (tier) {
+    case "dev":
+      return Number.POSITIVE_INFINITY;
+    case "paid":
+    case "unknown":
+      return INVOICE_QUOTA.paid;
+    case "free":
+      return INVOICE_QUOTA.free;
+  }
+}
+
+// App-access gate for mutating routes. Blocks ONLY when we couldn't verify the
+// shop's subscription; every real tier (dev/paid/free) is allowed through. Keeps
+// the 503 messaging identical across every gated route.
+export function appAccessBlock(
+  tier: PlanTier
 ): { status: number; body: Record<string, string> } | null {
-  if (access === "active") return null;
-  if (access === "none") return { status: 402, body: { error: "SUBSCRIPTION_REQUIRED" } };
-  return {
-    status: 503,
-    body: {
-      error: "BILLING_CHECK_FAILED",
-      message: "Couldn't verify your subscription — temporary issue, please retry in a moment.",
-    },
-  };
+  if (tier === "unknown") {
+    return {
+      status: 503,
+      body: {
+        error: "BILLING_CHECK_FAILED",
+        message: "Couldn't verify your subscription — temporary issue, please retry in a moment.",
+      },
+    };
+  }
+  return null;
 }
 
 // ── Create subscription ────────────────────────────────────────────────────────

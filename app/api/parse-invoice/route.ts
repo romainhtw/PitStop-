@@ -4,7 +4,8 @@ import { v4 as uuidv4 } from "uuid";
 import { waitUntil } from "@vercel/functions";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { requireShop } from "@/lib/shopify/requireShop";
-import { checkBillingAccess, billingBlock } from "@/lib/shopify/billing";
+import { getPlanTier, invoiceQuotaFor, appAccessBlock } from "@/lib/shopify/billing";
+import { getMonthlyInvoiceUsage, incrementMonthlyInvoiceUsage } from "@/lib/shopify/usage";
 import type { PurchaseOrder } from "@/lib/types";
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -39,8 +40,34 @@ export async function POST(req: NextRequest) {
 
     const shop = await requireShop(req);
     if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    const billing = billingBlock(await checkBillingAccess(shop));
-    if (billing) return NextResponse.json(billing.body, { status: billing.status });
+
+    // Freemium gate: block only when we can't verify the subscription; free & paid
+    // both proceed, separated by the monthly invoice quota below.
+    const tier = await getPlanTier(shop);
+    const access = appAccessBlock(tier);
+    if (access) return NextResponse.json(access.body, { status: access.status });
+
+    // Enforce the monthly cap BEFORE the (paid) Claude call. Uncapped tiers
+    // (dev stores) short-circuit. A slight over-count is possible under bursts of
+    // concurrent uploads — acceptable for a monthly cap.
+    const requestedAt = new Date();
+    const cap = invoiceQuotaFor(tier);
+    if (Number.isFinite(cap)) {
+      const usage = await getMonthlyInvoiceUsage(shop, requestedAt);
+      if (usage.count >= cap) {
+        return NextResponse.json(
+          {
+            error: "QUOTA_EXCEEDED",
+            tier,
+            cap,
+            used: usage.count,
+            resetDate: usage.resetDate,
+            message: `You've reached ${cap} invoices this month — resets on ${usage.resetLabel}`,
+          },
+          { status: 402 }
+        );
+      }
+    }
     const merchantId = shop;
 
     const formData = await req.formData();
@@ -245,6 +272,12 @@ export async function POST(req: NextRequest) {
     console.log("[parse-invoice] Saving to Firestore, poId:", poId);
     await adminDb.collection("purchaseOrders").doc(poId).set(po);
     console.log("[parse-invoice] Saved to Firestore OK");
+
+    // Count this successful parse against the month's quota. Best-effort in the
+    // background (waitUntil) — a counter write must never fail the merchant's PO.
+    if (Number.isFinite(cap)) {
+      waitUntil(incrementMonthlyInvoiceUsage(shop, requestedAt).catch(() => {}));
+    }
 
     // Upsert supplier in background — use waitUntil so Vercel doesn't freeze before the write completes
     if (parsed.supplier) {
