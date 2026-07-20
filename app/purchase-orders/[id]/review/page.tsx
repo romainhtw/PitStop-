@@ -38,6 +38,7 @@ function ConfidenceBadge({ score }: { score?: number }) {
 function CreateProductForm({
   form,
   creating,
+  warnZeroRetail,
   onChange,
   onSubmit,
   onCancel,
@@ -45,6 +46,7 @@ function CreateProductForm({
   lineItemId: string;
   form: CreateFormFields;
   creating: boolean;
+  warnZeroRetail?: boolean;
   onChange: (patch: Partial<CreateFormFields>) => void;
   onSubmit: () => void;
   onCancel: () => void;
@@ -68,7 +70,7 @@ function CreateProductForm({
         </div>
         <div>
           <label className="text-[10px] text-text-secondary mb-0.5 block">Retail Price ($)</label>
-          <input type="number" step="0.01" min={0} className={fieldCls} value={form?.price ?? ""} onChange={(e) => onChange({ price: e.target.value })} />
+          <input type="number" step="0.01" min={0} className={fieldCls} value={form?.price ?? ""} onFocus={(e) => e.target.select()} onChange={(e) => onChange({ price: e.target.value.replace(/^0+(?=\d)/, "") })} />
         </div>
         <div>
           <label className="text-[10px] text-text-secondary mb-0.5 block">Product Type</label>
@@ -113,12 +115,17 @@ function CreateProductForm({
           )}
         </div>
       </div>
+      {warnZeroRetail && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          No retail price set — this product will be created with <strong>$0 retail</strong>. Enter a price above, or click again to confirm.
+        </p>
+      )}
       <div className="flex items-center justify-between pt-1">
         <button onClick={onCancel} className="text-xs text-text-tertiary hover:text-text-secondary transition-colors">Cancel</button>
         <button
           onClick={onSubmit}
           disabled={creating || !form?.title?.trim()}
-          className="inline-flex items-center gap-1.5 bg-accent hover:bg-accent-dim disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors"
+          className={`inline-flex items-center gap-1.5 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors ${warnZeroRetail ? "bg-amber-600 hover:bg-amber-700" : "bg-accent hover:bg-accent-dim"}`}
         >
           {creating ? (
             <>
@@ -128,7 +135,7 @@ function CreateProductForm({
               </svg>
               Creating…
             </>
-          ) : "Create & Match →"}
+          ) : warnZeroRetail ? "Create with $0 retail →" : "Create & Match →"}
         </button>
       </div>
     </div>
@@ -197,6 +204,29 @@ export default function ReviewPurchaseOrderPage() {
   const [showCreateFor, setShowCreateFor] = useState<Record<string, boolean>>({});
   const [createFormData, setCreateFormData] = useState<Record<string, { title: string; sku: string; barcode: string; price: string; productType: string; options: Array<{ name: string; value: string }> }>>({});
   const [creating, setCreating] = useState<Record<string, boolean>>({});
+  // Lines where the operator was already warned that retail is $0 — a second
+  // click on Create then proceeds. Cleared when they set a price or cancel.
+  const [zeroRetailConfirm, setZeroRetailConfirm] = useState<Record<string, boolean>>({});
+
+  const clearZeroRetailWarn = (lineItemId: string) =>
+    setZeroRetailConfirm((prev) => {
+      if (!prev[lineItemId]) return prev;
+      const next = { ...prev };
+      delete next[lineItemId];
+      return next;
+    });
+
+  // Update a create-product form field; setting a positive price dismisses the
+  // $0-retail warning.
+  const patchCreateForm = (lineItemId: string, patch: Partial<CreateFormFields>) => {
+    setCreateFormData((prev) => ({ ...prev, [lineItemId]: { ...prev[lineItemId], ...patch } }));
+    if (patch.price !== undefined && (Number(patch.price) || 0) > 0) clearZeroRetailWarn(lineItemId);
+  };
+
+  const cancelCreateForm = (lineItemId: string) => {
+    setShowCreateFor((prev) => ({ ...prev, [lineItemId]: false }));
+    clearZeroRetailWarn(lineItemId);
+  };
 
   useEffect(() => {
     const applyCatalog = (products: ShopifyProduct[]) => {
@@ -477,14 +507,15 @@ export default function ReviewPurchaseOrderPage() {
     }
   };
 
-  function openCreateForm(lineItemId: string, name: string, sku: string, retailPrice: number, category: string) {
+  function openCreateForm(lineItemId: string, name: string, sku: string, retailPrice: number, category: string, costPrice = 0) {
     setCreateFormData((prev) => ({
       ...prev,
       [lineItemId]: {
         title: name,
         sku: sku || "",
         barcode: "",
-        price: retailPrice > 0 ? retailPrice.toFixed(2) : "",
+        // Default retail to a 2× markup on cost when there's no RRP — editable.
+        price: retailPrice > 0 ? retailPrice.toFixed(2) : costPrice > 0 ? (costPrice * 2).toFixed(2) : "",
         productType: category || "",
         options: [],
       },
@@ -495,6 +526,12 @@ export default function ReviewPurchaseOrderPage() {
   async function handleCreateProduct(lineItemId: string) {
     const form = createFormData[lineItemId];
     if (!form?.title?.trim()) return;
+    // Don't silently create a $0-retail product — warn once, then let a second
+    // click through.
+    if ((Number(form.price) || 0) <= 0 && !zeroRetailConfirm[lineItemId]) {
+      setZeroRetailConfirm((prev) => ({ ...prev, [lineItemId]: true }));
+      return;
+    }
     setCreating((prev) => ({ ...prev, [lineItemId]: true }));
     try {
       const res = await apiFetch("/api/shopify/create-product", {
@@ -516,6 +553,7 @@ export default function ReviewPurchaseOrderPage() {
       // (e.g. duplicate SKU). Surface the server's non-fatal warning so the
       // operator knows to fix it rather than believing everything saved cleanly.
       if (data.warning) setError(data.warning);
+      clearZeroRetailWarn(lineItemId);
       setShowCreateFor((prev) => ({ ...prev, [lineItemId]: false }));
       setShowSearchFor((prev) => ({ ...prev, [lineItemId]: false }));
     } catch (e) {
@@ -533,7 +571,9 @@ export default function ReviewPurchaseOrderPage() {
         title: li.name,
         sku: li.sku || "",
         barcode: li.barcode || "",
-        price: li.retailPrice ? String(li.retailPrice) : "",
+        // Default retail to a 2× markup on cost when the invoice has no RRP —
+        // editable, and avoids accidentally creating $0-retail products.
+        price: li.retailPrice > 0 ? String(li.retailPrice) : li.costPrice > 0 ? (li.costPrice * 2).toFixed(2) : "",
         productType: li.category || "",
         // Prefill variant options from the parsed line (size/colour/…) so the
         // created variant is named instead of "Default Title".
@@ -703,6 +743,10 @@ export default function ReviewPurchaseOrderPage() {
 
   const inputCls = "w-full rounded border border-border-1 bg-surface-2 text-text-primary placeholder:text-text-tertiary px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent";
   const cellCls = "w-full rounded border border-border-1 bg-surface-2 text-text-primary placeholder:text-text-tertiary px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent";
+  // Numeric line-item inputs default to 0; typing appended to it ("0"→"044").
+  // Strip a leading zero on change (keeps a lone "0" and decimals like "0.99"),
+  // and pair with onFocus select-all so the first keystroke replaces the value.
+  const toNum = (raw: string) => Number(raw.replace(/^0+(?=\d)/, "")) || 0;
   const isBusy = submitting || syncing || previewing;
 
   if (!loaded) {
@@ -1008,9 +1052,10 @@ export default function ReviewPurchaseOrderPage() {
                               lineItemId={li.id}
                               form={createFormData[li.id]}
                               creating={!!creating[li.id]}
-                              onChange={(patch) => setCreateFormData((prev) => ({ ...prev, [li.id]: { ...prev[li.id], ...patch } }))}
+                              warnZeroRetail={!!zeroRetailConfirm[li.id]}
+                              onChange={(patch) => patchCreateForm(li.id, patch)}
                               onSubmit={() => handleCreateProduct(li.id)}
-                              onCancel={() => setShowCreateFor((prev) => ({ ...prev, [li.id]: false }))}
+                              onCancel={() => cancelCreateForm(li.id)}
                             />
                           );
                         }
@@ -1105,9 +1150,9 @@ export default function ReviewPurchaseOrderPage() {
                         onChange={(e) => updateItem(idx, { category: e.target.value })}
                       />
                     </td>
-                    <td className="py-1.5 pr-2"><input type="number" min={0} className={`${cellCls} ${lockCls}`} value={li.qty} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { qty: Number(e.target.value) || 0 })} /></td>
-                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={`${cellCls} ${lockCls}`} value={li.costPrice} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { costPrice: Number(e.target.value) || 0 })} /></td>
-                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={`${cellCls} ${lockCls}`} value={li.retailPrice} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { retailPrice: Number(e.target.value) || 0 })} /></td>
+                    <td className="py-1.5 pr-2"><input type="number" min={0} className={`${cellCls} ${lockCls}`} value={li.qty} disabled={isSynced} title={isSynced ? lockTip : undefined} onFocus={(e) => e.target.select()} onChange={(e) => updateItem(idx, { qty: toNum(e.target.value) })} /></td>
+                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={`${cellCls} ${lockCls}`} value={li.costPrice} disabled={isSynced} title={isSynced ? lockTip : undefined} onFocus={(e) => e.target.select()} onChange={(e) => updateItem(idx, { costPrice: toNum(e.target.value) })} /></td>
+                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={`${cellCls} ${lockCls}`} value={li.retailPrice} disabled={isSynced} title={isSynced ? lockTip : undefined} onFocus={(e) => e.target.select()} onChange={(e) => updateItem(idx, { retailPrice: toNum(e.target.value) })} /></td>
                     <td className="py-1.5 pr-2 text-center"><input type="checkbox" checked={li.gstApplicable} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className={`w-4 h-4 accent-accent ${lockCls}`} /></td>
                     <td className="py-1.5 pr-2 text-center">
                       <input
@@ -1191,7 +1236,8 @@ export default function ReviewPurchaseOrderPage() {
               <span>Shipping</span>
               <input
                 type="number" step="0.01" min={0} value={shippingCost}
-                onChange={(e) => setShippingCost(Number(e.target.value) || 0)}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setShippingCost(toNum(e.target.value))}
                 className="w-28 rounded border border-border-1 px-2 py-1 text-right text-sm focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent"
               />
             </div>
@@ -1463,7 +1509,7 @@ export default function ReviewPurchaseOrderPage() {
                                     )}
                                     {!showCreateFor[r.lineItemId] ? (
                                       <button
-                                        onClick={() => openCreateForm(r.lineItemId, r.name, r.sku || "", lineItem?.retailPrice ?? 0, lineItem?.category ?? "")}
+                                        onClick={() => openCreateForm(r.lineItemId, r.name, r.sku || "", lineItem?.retailPrice ?? 0, lineItem?.category ?? "", lineItem?.costPrice ?? 0)}
                                         className="inline-flex items-center gap-1 text-xs text-accent hover:underline font-medium"
                                       >
                                         + Create new product in Shopify
@@ -1473,9 +1519,10 @@ export default function ReviewPurchaseOrderPage() {
                                         lineItemId={r.lineItemId}
                                         form={createFormData[r.lineItemId]}
                                         creating={!!creating[r.lineItemId]}
-                                        onChange={(patch) => setCreateFormData((prev) => ({ ...prev, [r.lineItemId]: { ...prev[r.lineItemId], ...patch } }))}
+                                        warnZeroRetail={!!zeroRetailConfirm[r.lineItemId]}
+                                        onChange={(patch) => patchCreateForm(r.lineItemId, patch)}
                                         onSubmit={() => handleCreateProduct(r.lineItemId)}
-                                        onCancel={() => setShowCreateFor((prev) => ({ ...prev, [r.lineItemId]: false }))}
+                                        onCancel={() => cancelCreateForm(r.lineItemId)}
                                       />
                                     )}
                                   </>
@@ -1636,7 +1683,7 @@ export default function ReviewPurchaseOrderPage() {
                                 )}
                                 {!showCreateFor[r.lineItemId] ? (
                                   <button
-                                    onClick={() => openCreateForm(r.lineItemId, r.name, r.sku || "", lineItem?.retailPrice ?? 0, lineItem?.category ?? "")}
+                                    onClick={() => openCreateForm(r.lineItemId, r.name, r.sku || "", lineItem?.retailPrice ?? 0, lineItem?.category ?? "", lineItem?.costPrice ?? 0)}
                                     className="inline-flex items-center gap-1 text-xs text-accent hover:underline font-medium"
                                   >
                                     + Create new product in Shopify
@@ -1646,9 +1693,10 @@ export default function ReviewPurchaseOrderPage() {
                                     lineItemId={r.lineItemId}
                                     form={createFormData[r.lineItemId]}
                                     creating={!!creating[r.lineItemId]}
-                                    onChange={(patch) => setCreateFormData((prev) => ({ ...prev, [r.lineItemId]: { ...prev[r.lineItemId], ...patch } }))}
+                                    warnZeroRetail={!!zeroRetailConfirm[r.lineItemId]}
+                                    onChange={(patch) => patchCreateForm(r.lineItemId, patch)}
                                     onSubmit={() => handleCreateProduct(r.lineItemId)}
-                                    onCancel={() => setShowCreateFor((prev) => ({ ...prev, [r.lineItemId]: false }))}
+                                    onCancel={() => cancelCreateForm(r.lineItemId)}
                                   />
                                 )}
                               </>
