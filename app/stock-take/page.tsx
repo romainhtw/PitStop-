@@ -231,7 +231,7 @@ export default function StockTakePage() {
         throw new Error(
           failedCount > 0
             ? `${failedCount} item${failedCount > 1 ? "s" : ""} couldn't be updated. Re-count and commit again.`
-            : data.error || "Commit failed"
+            : data.message || data.error || "Commit failed"
         );
       }
       setCommitResult({

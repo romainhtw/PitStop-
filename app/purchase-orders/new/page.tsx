@@ -116,7 +116,9 @@ export default function NewPurchaseOrderPage() {
           );
         }
 
-        if (data.error) throw new Error(data.error as string);
+        // Prefer a human-readable `message` (e.g. billing check couldn't be
+        // verified — 503) over the raw error code.
+        if (data.error) throw new Error((data.message as string) || (data.error as string));
         if (!data.id) throw new Error("Unexpected response from server — please try again.");
         router.push(`/purchase-orders/${data.id}/review`);
       } catch (e) {

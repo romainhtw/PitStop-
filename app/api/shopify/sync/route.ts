@@ -13,7 +13,7 @@ import {
   activateInventoryItems,
 } from "@/lib/shopify";
 import { requireShop } from "@/lib/shopify/requireShop";
-import { hasBillingAccess } from "@/lib/shopify/billing";
+import { checkBillingAccess, billingBlock } from "@/lib/shopify/billing";
 import { lookupMapping, saveMapping, lookupNameMapping, saveNameMapping } from "@/lib/adminMappings";
 import type { PurchaseOrder, LineSyncResult, SyncResult, VariantSuggestion } from "@/lib/types";
 
@@ -153,7 +153,8 @@ export async function POST(req: NextRequest) {
   try {
     const shop = await requireShop(req);
     if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    if (!(await hasBillingAccess(shop))) return NextResponse.json({ error: "SUBSCRIPTION_REQUIRED" }, { status: 402 });
+    const billing = billingBlock(await checkBillingAccess(shop));
+    if (billing) return NextResponse.json(billing.body, { status: billing.status });
     const merchantId = shop;
 
     type SyncOverride = { variantId: string; inventoryItemId: string; productTitle: string };

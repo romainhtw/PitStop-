@@ -169,6 +169,12 @@ export default function ReviewPurchaseOrderPage() {
   const [loaded, setLoaded] = useState(false);
   const [previewResult, setPreviewResult] = useState<SyncResult | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  // Line-item ids already pushed to Shopify by a prior (partial) sync. These are
+  // locked read-only in the edit table: the sync engine skips already-synced
+  // lines, so editing one would silently NOT reach Shopify while the UI showed
+  // the new value. Tracked separately from `syncResult` so dismissing the results
+  // panel doesn't unlock them. To change a synced line, create a new PO.
+  const [lockedLineIds, setLockedLineIds] = useState<Set<string>>(new Set());
   const [poStatus, setPoStatus] = useState<PurchaseOrder["status"]>("draft");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
@@ -269,7 +275,16 @@ export default function ReviewPurchaseOrderPage() {
         }
         setPoStatus(po.status || "draft");
         if (po.pdfUrl) setPdfUrl(po.pdfUrl);
-        if (po.syncResult) setSyncResult(po.syncResult);
+        if (po.syncResult) {
+          setSyncResult(po.syncResult);
+          setLockedLineIds(
+            new Set(
+              (po.syncResult.results ?? [])
+                .filter((r) => r.status === "synced" && r.lineItemId)
+                .map((r) => r.lineItemId)
+            )
+          );
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load purchase order");
       } finally {
@@ -488,7 +503,7 @@ export default function ReviewPurchaseOrderPage() {
         body: JSON.stringify(form),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Creation failed");
+      if (!res.ok) throw new Error(data.message || data.error || "Creation failed");
       setConfirmedMappings((prev) => ({
         ...prev,
         [lineItemId]: {
@@ -612,7 +627,9 @@ export default function ReviewPurchaseOrderPage() {
       });
       if (reloadIfSessionExpired(res)) return;
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Preview failed");
+      // `message` carries a human-readable reason (e.g. billing check couldn't be
+      // verified — 503); fall back to the raw error code only if it's absent.
+      if (!res.ok) throw new Error(data.message || data.error || "Preview failed");
       const result = data as SyncResult;
       setPreviewResult(result);
 
@@ -654,7 +671,7 @@ export default function ReviewPurchaseOrderPage() {
         setDuplicateInvoiceError(syncData.duplicateInvoice);
         return;
       }
-      if (!syncRes.ok) throw new Error(syncData.error || "Shopify sync failed");
+      if (!syncRes.ok) throw new Error(syncData.message || syncData.error || "Shopify sync failed");
       const result = syncData as SyncResult;
       const conflicts: ConflictItem[] = (result.results ?? [])
         .filter((r) => r.conflictError)
@@ -668,6 +685,15 @@ export default function ReviewPurchaseOrderPage() {
       if (conflicts.length > 0) setConflictItems(conflicts);
       setPreviewResult(null);
       setSyncResult(result);
+      // Lock any line that just synced so a follow-up edit + re-sync can't
+      // silently diverge from Shopify (the sync engine skips prior-synced lines).
+      setLockedLineIds((prev) => {
+        const next = new Set(prev);
+        (result.results ?? [])
+          .filter((r) => r.status === "synced" && r.lineItemId)
+          .forEach((r) => next.add(r.lineItemId));
+        return next;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -938,13 +964,29 @@ export default function ReviewPurchaseOrderPage() {
                   </td>
                 </tr>
               ) : (
-                lineItems.map((li, idx) => (
-                  <tr key={li.id} className={`border-b border-border-0 transition-opacity ${li.hidden ? "opacity-40" : ""}`}>
+                lineItems.map((li, idx) => {
+                  const isSynced = lockedLineIds.has(li.id);
+                  // Applied to every field in a synced row so editing is visibly blocked.
+                  const lockCls = isSynced ? "opacity-60 cursor-not-allowed" : "";
+                  const lockTip = "This line was already synced to Shopify and can't be edited. Create a new PO for adjustments.";
+                  return (
+                  <tr key={li.id} className={`border-b border-border-0 transition-opacity ${li.hidden ? "opacity-40" : ""} ${isSynced ? "bg-emerald-50/40" : ""}`}>
                     {/* Name + option chips */}
                     <td className="py-1.5 pr-2">
+                      {isSynced && (
+                        <span
+                          title={lockTip}
+                          className="inline-flex items-center gap-1 mb-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded"
+                        >
+                          <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v2H5a1 1 0 00-1 1v7a1 1 0 001 1h10a1 1 0 001-1V9a1 1 0 00-1-1h-1V6a4 4 0 00-4-4zm2 6V6a2 2 0 10-4 0v2h4z" clipRule="evenodd" /></svg>
+                          Synced · locked
+                        </span>
+                      )}
                       <input
-                        className={`${cellCls} ${li.hidden ? "line-through text-text-tertiary" : ""}`}
+                        className={`${cellCls} ${li.hidden ? "line-through text-text-tertiary" : ""} ${lockCls}`}
                         value={li.name}
+                        disabled={isSynced}
+                        title={isSynced ? lockTip : undefined}
                         onChange={(e) => updateItem(idx, { name: e.target.value })}
                       />
                       {li.optionValues && li.optionValues.length > 0 && (
@@ -958,7 +1000,7 @@ export default function ReviewPurchaseOrderPage() {
                       )}
 
                       {/* Inline Shopify match (Task 2) */}
-                      {!li.hidden && (() => {
+                      {!li.hidden && !isSynced && (() => {
                         // Create-new-product form takes over the cell when open
                         if (showCreateFor[li.id]) {
                           return (
@@ -1036,37 +1078,45 @@ export default function ReviewPurchaseOrderPage() {
                     {/* SKU (supplier code) + Barcode (EAN) stacked */}
                     <td className="py-1.5 pr-2">
                       <input
-                        className={cellCls}
+                        className={`${cellCls} ${lockCls}`}
                         value={li.sku}
                         placeholder="Supplier SKU"
+                        disabled={isSynced}
+                        title={isSynced ? lockTip : undefined}
                         onChange={(e) => updateItem(idx, { sku: e.target.value })}
                       />
                       <input
-                        className={`${cellCls} mt-1 text-[11px] text-text-secondary`}
+                        className={`${cellCls} mt-1 text-[11px] text-text-secondary ${lockCls}`}
                         value={li.barcode || ""}
                         placeholder="Barcode / EAN"
+                        disabled={isSynced}
+                        title={isSynced ? lockTip : undefined}
                         onChange={(e) => updateItem(idx, { barcode: e.target.value })}
                       />
                     </td>
                     <td className="py-1.5 pr-2">
                       <input
                         list="category-options"
-                        className={cellCls}
+                        className={`${cellCls} ${lockCls}`}
                         value={li.category}
                         placeholder="e.g. Helmets (Collection)"
+                        disabled={isSynced}
+                        title={isSynced ? lockTip : undefined}
                         onChange={(e) => updateItem(idx, { category: e.target.value })}
                       />
                     </td>
-                    <td className="py-1.5 pr-2"><input type="number" min={0} className={cellCls} value={li.qty} onChange={(e) => updateItem(idx, { qty: Number(e.target.value) || 0 })} /></td>
-                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={cellCls} value={li.costPrice} onChange={(e) => updateItem(idx, { costPrice: Number(e.target.value) || 0 })} /></td>
-                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={cellCls} value={li.retailPrice} onChange={(e) => updateItem(idx, { retailPrice: Number(e.target.value) || 0 })} /></td>
-                    <td className="py-1.5 pr-2 text-center"><input type="checkbox" checked={li.gstApplicable} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className="w-4 h-4 accent-accent" /></td>
+                    <td className="py-1.5 pr-2"><input type="number" min={0} className={`${cellCls} ${lockCls}`} value={li.qty} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { qty: Number(e.target.value) || 0 })} /></td>
+                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={`${cellCls} ${lockCls}`} value={li.costPrice} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { costPrice: Number(e.target.value) || 0 })} /></td>
+                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={`${cellCls} ${lockCls}`} value={li.retailPrice} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { retailPrice: Number(e.target.value) || 0 })} /></td>
+                    <td className="py-1.5 pr-2 text-center"><input type="checkbox" checked={li.gstApplicable} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className={`w-4 h-4 accent-accent ${lockCls}`} /></td>
                     <td className="py-1.5 pr-2 text-center">
                       <input
                         type="checkbox"
                         checked={li.shipIncluded !== false}
+                        disabled={isSynced}
+                        title={isSynced ? lockTip : undefined}
                         onChange={(e) => updateItem(idx, { shipIncluded: e.target.checked })}
-                        className="w-4 h-4 accent-accent"
+                        className={`w-4 h-4 accent-accent ${lockCls}`}
                         aria-label="Include this item in the shipping split"
                       />
                       {shipSurcharge > 0 && !li.hidden && li.shipIncluded !== false && (
@@ -1078,8 +1128,9 @@ export default function ReviewPurchaseOrderPage() {
                       <div className="flex items-center gap-0.5 justify-center">
                         <button
                           onClick={() => updateItem(idx, { hidden: !li.hidden })}
-                          title={li.hidden ? "Show — will sync to Shopify" : "Hide — won't sync to Shopify"}
-                          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${li.hidden ? "text-amber-500 hover:text-accent bg-amber-50" : "text-text-tertiary hover:text-text-tertiary"}`}
+                          disabled={isSynced}
+                          title={isSynced ? lockTip : li.hidden ? "Show — will sync to Shopify" : "Hide — won't sync to Shopify"}
+                          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${li.hidden ? "text-amber-500 hover:text-accent bg-amber-50" : "text-text-tertiary hover:text-text-tertiary"} ${lockCls}`}
                           aria-label={li.hidden ? "Show item" : "Hide item"}
                         >
                           {li.hidden ? (
@@ -1095,13 +1146,16 @@ export default function ReviewPurchaseOrderPage() {
                         </button>
                         <button
                           onClick={() => removeRow(idx)}
-                          className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-red-500 text-xl leading-none rounded transition-colors"
+                          disabled={isSynced}
+                          title={isSynced ? lockTip : undefined}
+                          className={`w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-red-500 text-xl leading-none rounded transition-colors ${lockCls}`}
                           aria-label="Remove row"
                         >&times;</button>
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
