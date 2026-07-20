@@ -16,6 +16,7 @@ interface CreateFormFields {
   barcode: string;
   price: string;
   productType: string;
+  options: Array<{ name: string; value: string }>;
 }
 
 function confidenceTier(score?: number): { label: string; className: string } {
@@ -48,7 +49,7 @@ function CreateProductForm({
   onSubmit: () => void;
   onCancel: () => void;
 }) {
-  const fieldCls = "w-full rounded border border-amber-200 bg-white text-gray-900 placeholder:text-gray-400 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent";
+  const fieldCls = "w-full rounded border border-status-drift/40 bg-surface-1 text-text-primary placeholder:text-text-tertiary px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent";
   return (
     <div className="mt-2 bg-surface-1 border border-amber-200 rounded-lg p-3 space-y-2">
       <p className="text-[10px] font-bold text-accent uppercase tracking-widest mb-1">New Shopify product</p>
@@ -72,6 +73,44 @@ function CreateProductForm({
         <div>
           <label className="text-[10px] text-text-secondary mb-0.5 block">Product Type</label>
           <input className={fieldCls} value={form?.productType ?? ""} onChange={(e) => onChange({ productType: e.target.value })} />
+        </div>
+      </div>
+      <div>
+        <label className="text-[10px] text-text-secondary mb-0.5 block">Variant options (size, colour…)</label>
+        <div className="space-y-1.5">
+          {(form?.options ?? []).map((opt, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <input
+                className={fieldCls}
+                placeholder="Option (e.g. Size)"
+                aria-label="Option name"
+                value={opt.name}
+                onChange={(e) => onChange({ options: (form.options ?? []).map((o, j) => (j === i ? { ...o, name: e.target.value } : o)) })}
+              />
+              <input
+                className={fieldCls}
+                placeholder="Value (e.g. M)"
+                aria-label="Option value"
+                value={opt.value}
+                onChange={(e) => onChange({ options: (form.options ?? []).map((o, j) => (j === i ? { ...o, value: e.target.value } : o)) })}
+              />
+              <button
+                onClick={() => onChange({ options: (form.options ?? []).filter((_, j) => j !== i) })}
+                aria-label="Remove option"
+                className="shrink-0 w-8 h-8 flex items-center justify-center text-text-tertiary hover:text-status-shortage text-lg leading-none"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {(form?.options?.length ?? 0) < 3 && (
+            <button
+              onClick={() => onChange({ options: [...(form?.options ?? []), { name: "", value: "" }] })}
+              className="text-xs text-accent hover:text-accent-dim font-medium"
+            >
+              + Add option
+            </button>
+          )}
         </div>
       </div>
       <div className="flex items-center justify-between pt-1">
@@ -107,7 +146,8 @@ export default function ReviewPurchaseOrderPage() {
   const [currency, setCurrency] = useState("AUD");
   const [taxVatNumber, setTaxVatNumber] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
-  const [location, setLocation] = useState<PurchaseOrder["location"]>("In-Store Fitzgerald St");
+  const [location, setLocation] = useState<PurchaseOrder["location"]>("");
+  const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [paymentTerms, setPaymentTerms] = useState("");
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [shippingCost, setShippingCost] = useState(0);
@@ -129,6 +169,12 @@ export default function ReviewPurchaseOrderPage() {
   const [loaded, setLoaded] = useState(false);
   const [previewResult, setPreviewResult] = useState<SyncResult | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  // Line-item ids already pushed to Shopify by a prior (partial) sync. These are
+  // locked read-only in the edit table: the sync engine skips already-synced
+  // lines, so editing one would silently NOT reach Shopify while the UI showed
+  // the new value. Tracked separately from `syncResult` so dismissing the results
+  // panel doesn't unlock them. To change a synced line, create a new PO.
+  const [lockedLineIds, setLockedLineIds] = useState<Set<string>>(new Set());
   const [poStatus, setPoStatus] = useState<PurchaseOrder["status"]>("draft");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
@@ -149,7 +195,7 @@ export default function ReviewPurchaseOrderPage() {
   const [manualSearching, setManualSearching] = useState<Record<string, boolean>>({});
   const [showSearchFor, setShowSearchFor] = useState<Record<string, boolean>>({});
   const [showCreateFor, setShowCreateFor] = useState<Record<string, boolean>>({});
-  const [createFormData, setCreateFormData] = useState<Record<string, { title: string; sku: string; barcode: string; price: string; productType: string }>>({});
+  const [createFormData, setCreateFormData] = useState<Record<string, { title: string; sku: string; barcode: string; price: string; productType: string; options: Array<{ name: string; value: string }> }>>({});
   const [creating, setCreating] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -176,7 +222,7 @@ export default function ReviewPurchaseOrderPage() {
         setCurrency(po.currency || "AUD");
         setTaxVatNumber(po.taxVatNumber || "");
         setOrderNumber(po.orderNumber || "");
-        setLocation(po.location || "In-Store Fitzgerald St");
+        setLocation(po.location || "");
         setPaymentTerms(po.paymentTerms || "");
         setShippingCost(Number(po.shippingCost) || 0);
         if (po.exchangeRate) setExchangeRate(po.exchangeRate);
@@ -229,7 +275,16 @@ export default function ReviewPurchaseOrderPage() {
         }
         setPoStatus(po.status || "draft");
         if (po.pdfUrl) setPdfUrl(po.pdfUrl);
-        if (po.syncResult) setSyncResult(po.syncResult);
+        if (po.syncResult) {
+          setSyncResult(po.syncResult);
+          setLockedLineIds(
+            new Set(
+              (po.syncResult.results ?? [])
+                .filter((r) => r.status === "synced" && r.lineItemId)
+                .map((r) => r.lineItemId)
+            )
+          );
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load purchase order");
       } finally {
@@ -238,6 +293,19 @@ export default function ReviewPurchaseOrderPage() {
     }
     load();
   }, [id]);
+
+  // Load THIS shop's real Shopify locations for the picker, and default to the
+  // primary one when the PO has no valid location (or a legacy/hard-coded value).
+  useEffect(() => {
+    apiFetch("/api/shopify/locations")
+      .then((r) => (r.ok ? r.json() : { locations: [] }))
+      .then((data: { locations?: Array<{ id: string; name: string }> }) => {
+        const list = data.locations ?? [];
+        setLocations(list);
+        setLocation((prev) => (prev && list.some((l) => l.name === prev) ? prev : list[0]?.name ?? ""));
+      })
+      .catch(() => {});
+  }, []);
 
   const subtotal = useMemo(
     () => lineItems.reduce((s, li) => s + li.qty * li.costPrice, 0),
@@ -279,23 +347,29 @@ export default function ReviewPurchaseOrderPage() {
   const liveLandedCosts = useMemo(() => {
     if (!previewResult) return new Map<string, number>();
     const surcharge = (invoiceTotals?.freightShipping ?? 0) + (invoiceTotals?.insurance ?? 0) + (invoiceTotals?.customsTariffs ?? 0) + (invoiceTotals?.brokerageFees ?? 0);
+    // Even split across every included, visible line (mirrors the sync backend).
+    const includedCount = lineItems.filter((li) => !li.hidden && li.shipIncluded !== false).length;
+    const perLine = includedCount > 0 ? surcharge / includedCount : 0;
     const matched = previewResult.results.filter((r) => r.inventoryItemId);
-    const items = matched.map((r) => {
-      const li = lineItems.find((li) => li.id === r.lineItemId);
-      return { lineItemId: r.lineItemId, costPrice: li?.costPrice ?? 0, qty: li?.qty ?? 0 };
-    });
-    const invoiceValue = items.reduce((s, it) => s + it.costPrice * it.qty, 0);
     const map = new Map<string, number>();
-    for (const it of items) {
-      const share = invoiceValue > 0 ? (it.costPrice * it.qty) / invoiceValue : 0;
-      const allocation = surcharge > 0 ? (share * surcharge) / Math.max(it.qty, 1) : 0;
-      map.set(it.lineItemId, it.costPrice + allocation);
+    for (const r of matched) {
+      const li = lineItems.find((li) => li.id === r.lineItemId);
+      const costPrice = li?.costPrice ?? 0;
+      const qty = li?.qty ?? 0;
+      const included = li ? !li.hidden && li.shipIncluded !== false : false;
+      const allocation = included && perLine > 0 ? perLine / Math.max(qty, 1) : 0;
+      map.set(r.lineItemId, costPrice + allocation);
     }
     return map;
   }, [previewResult, invoiceTotals, lineItems]);
 
   const updateItem = (idx: number, patch: Partial<LineItem>) =>
     setLineItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+
+  // Shipping/landed-cost split preview — even share across ticked, visible lines.
+  const shipSurcharge = (invoiceTotals?.freightShipping ?? 0) + (invoiceTotals?.insurance ?? 0) + (invoiceTotals?.customsTariffs ?? 0) + (invoiceTotals?.brokerageFees ?? 0);
+  const shipIncludedCount = lineItems.filter((li) => !li.hidden && li.shipIncluded !== false).length;
+  const shipPerLine = shipIncludedCount > 0 ? shipSurcharge / shipIncludedCount : 0;
 
   const addRow = () =>
     setLineItems((prev) => [
@@ -412,6 +486,7 @@ export default function ReviewPurchaseOrderPage() {
         barcode: "",
         price: retailPrice > 0 ? retailPrice.toFixed(2) : "",
         productType: category || "",
+        options: [],
       },
     }));
     setShowCreateFor((prev) => ({ ...prev, [lineItemId]: true }));
@@ -428,7 +503,7 @@ export default function ReviewPurchaseOrderPage() {
         body: JSON.stringify(form),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Creation failed");
+      if (!res.ok) throw new Error(data.message || data.error || "Creation failed");
       setConfirmedMappings((prev) => ({
         ...prev,
         [lineItemId]: {
@@ -437,6 +512,10 @@ export default function ReviewPurchaseOrderPage() {
           productTitle: data.productTitle,
         },
       }));
+      // The product is created, but SKU/barcode/price can still fail to save
+      // (e.g. duplicate SKU). Surface the server's non-fatal warning so the
+      // operator knows to fix it rather than believing everything saved cleanly.
+      if (data.warning) setError(data.warning);
       setShowCreateFor((prev) => ({ ...prev, [lineItemId]: false }));
       setShowSearchFor((prev) => ({ ...prev, [lineItemId]: false }));
     } catch (e) {
@@ -451,11 +530,14 @@ export default function ReviewPurchaseOrderPage() {
     setCreateFormData((prev) => ({
       ...prev,
       [li.id]: {
-        title: [li.name, ...(li.optionValues ?? []).map((o) => o.optionValue)].filter(Boolean).join(" "),
+        title: li.name,
         sku: li.sku || "",
         barcode: li.barcode || "",
         price: li.retailPrice ? String(li.retailPrice) : "",
         productType: li.category || "",
+        // Prefill variant options from the parsed line (size/colour/…) so the
+        // created variant is named instead of "Default Title".
+        options: (li.optionValues ?? []).map((o) => ({ name: o.optionName, value: o.optionValue })),
       },
     }));
     setShowCreateFor((prev) => ({ ...prev, [li.id]: true }));
@@ -545,7 +627,9 @@ export default function ReviewPurchaseOrderPage() {
       });
       if (reloadIfSessionExpired(res)) return;
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Preview failed");
+      // `message` carries a human-readable reason (e.g. billing check couldn't be
+      // verified — 503); fall back to the raw error code only if it's absent.
+      if (!res.ok) throw new Error(data.message || data.error || "Preview failed");
       const result = data as SyncResult;
       setPreviewResult(result);
 
@@ -587,7 +671,7 @@ export default function ReviewPurchaseOrderPage() {
         setDuplicateInvoiceError(syncData.duplicateInvoice);
         return;
       }
-      if (!syncRes.ok) throw new Error(syncData.error || "Shopify sync failed");
+      if (!syncRes.ok) throw new Error(syncData.message || syncData.error || "Shopify sync failed");
       const result = syncData as SyncResult;
       const conflicts: ConflictItem[] = (result.results ?? [])
         .filter((r) => r.conflictError)
@@ -601,6 +685,15 @@ export default function ReviewPurchaseOrderPage() {
       if (conflicts.length > 0) setConflictItems(conflicts);
       setPreviewResult(null);
       setSyncResult(result);
+      // Lock any line that just synced so a follow-up edit + re-sync can't
+      // silently diverge from Shopify (the sync engine skips prior-synced lines).
+      setLockedLineIds((prev) => {
+        const next = new Set(prev);
+        (result.results ?? [])
+          .filter((r) => r.status === "synced" && r.lineItemId)
+          .forEach((r) => next.add(r.lineItemId));
+        return next;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -654,7 +747,7 @@ export default function ReviewPurchaseOrderPage() {
 
       <div className={`${pdfPaneOpen && pdfUrl ? "flex-1 overflow-y-auto" : ""} p-10 max-w-6xl`}>
       <div className="mb-4"><BackButton /></div>
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 mb-8">
         <div>
           <h1 className="text-2xl font-sans font-semibold tracking-tight text-text-primary mb-0.5">Review Purchase Order</h1>
           <p className="text-text-secondary text-sm">
@@ -662,7 +755,7 @@ export default function ReviewPurchaseOrderPage() {
           </p>
         </div>
         {/* Always-visible actions */}
-        <div className="flex items-center gap-3 shrink-0 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
           {loaded && (
             <button
               onClick={handleSaveStay}
@@ -688,17 +781,15 @@ export default function ReviewPurchaseOrderPage() {
               {pdfPaneOpen ? "Close PDF" : "View PDF"}
             </button>
           )}
-          <a
-            href={`/purchase-orders/${params.id}/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => router.push(`/purchase-orders/${params.id}/pdf`)}
             className="inline-flex items-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:border-accent hover:text-accent px-3 py-2 rounded transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
             Download PO
-          </a>
+          </button>
           {poStatus !== "approved" && (
             <button
               onClick={handleMarkOrdered}
@@ -738,8 +829,10 @@ export default function ReviewPurchaseOrderPage() {
           <div>
             <label className="text-xs text-text-secondary mb-1 block">Location</label>
             <select className={inputCls} value={location} onChange={(e) => setLocation(e.target.value as PurchaseOrder["location"])}>
-              <option value="In-Store Fitzgerald St">In-Store Fitzgerald St</option>
-              <option value="Warehouse">Warehouse</option>
+              {locations.length === 0 && <option value="">Loading locations…</option>}
+              {locations.map((l) => (
+                <option key={l.id} value={l.name}>{l.name}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -859,24 +952,41 @@ export default function ReviewPurchaseOrderPage() {
                 <th className="py-2 pr-2 w-28">Cost Price</th>
                 <th className="py-2 pr-2 w-28">Retail Price</th>
                 <th className="py-2 pr-2 w-16 text-center">GST</th>
+                <th className="py-2 pr-2 w-20 text-center" title="Share the invoice shipping/landed cost evenly across the ticked items">Ship</th>
                 <th className="py-2 w-16" />
               </tr>
             </thead>
             <tbody>
               {lineItems.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-text-tertiary text-sm">
-                    No items yet — click &ldquo;Add Row&rdquo; to start.
+                  <td colSpan={9} className="py-8 text-center text-text-tertiary text-sm">
+                    No items yet — use &ldquo;Search &amp; add product&rdquo; or &ldquo;Blank row&rdquo; to start.
                   </td>
                 </tr>
               ) : (
-                lineItems.map((li, idx) => (
-                  <tr key={li.id} className={`border-b border-border-0 transition-opacity ${li.hidden ? "opacity-40" : ""}`}>
+                lineItems.map((li, idx) => {
+                  const isSynced = lockedLineIds.has(li.id);
+                  // Applied to every field in a synced row so editing is visibly blocked.
+                  const lockCls = isSynced ? "opacity-60 cursor-not-allowed" : "";
+                  const lockTip = "This line was already synced to Shopify and can't be edited. Create a new PO for adjustments.";
+                  return (
+                  <tr key={li.id} className={`border-b border-border-0 transition-opacity ${li.hidden ? "opacity-40" : ""} ${isSynced ? "bg-emerald-50/40" : ""}`}>
                     {/* Name + option chips */}
                     <td className="py-1.5 pr-2">
+                      {isSynced && (
+                        <span
+                          title={lockTip}
+                          className="inline-flex items-center gap-1 mb-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded"
+                        >
+                          <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v2H5a1 1 0 00-1 1v7a1 1 0 001 1h10a1 1 0 001-1V9a1 1 0 00-1-1h-1V6a4 4 0 00-4-4zm2 6V6a2 2 0 10-4 0v2h4z" clipRule="evenodd" /></svg>
+                          Synced · locked
+                        </span>
+                      )}
                       <input
-                        className={`${cellCls} ${li.hidden ? "line-through text-text-tertiary" : ""}`}
+                        className={`${cellCls} ${li.hidden ? "line-through text-text-tertiary" : ""} ${lockCls}`}
                         value={li.name}
+                        disabled={isSynced}
+                        title={isSynced ? lockTip : undefined}
                         onChange={(e) => updateItem(idx, { name: e.target.value })}
                       />
                       {li.optionValues && li.optionValues.length > 0 && (
@@ -890,7 +1000,7 @@ export default function ReviewPurchaseOrderPage() {
                       )}
 
                       {/* Inline Shopify match (Task 2) */}
-                      {!li.hidden && (() => {
+                      {!li.hidden && !isSynced && (() => {
                         // Create-new-product form takes over the cell when open
                         if (showCreateFor[li.id]) {
                           return (
@@ -968,38 +1078,59 @@ export default function ReviewPurchaseOrderPage() {
                     {/* SKU (supplier code) + Barcode (EAN) stacked */}
                     <td className="py-1.5 pr-2">
                       <input
-                        className={cellCls}
+                        className={`${cellCls} ${lockCls}`}
                         value={li.sku}
                         placeholder="Supplier SKU"
+                        disabled={isSynced}
+                        title={isSynced ? lockTip : undefined}
                         onChange={(e) => updateItem(idx, { sku: e.target.value })}
                       />
                       <input
-                        className={`${cellCls} mt-1 text-[11px] text-text-secondary`}
+                        className={`${cellCls} mt-1 text-[11px] text-text-secondary ${lockCls}`}
                         value={li.barcode || ""}
                         placeholder="Barcode / EAN"
+                        disabled={isSynced}
+                        title={isSynced ? lockTip : undefined}
                         onChange={(e) => updateItem(idx, { barcode: e.target.value })}
                       />
                     </td>
                     <td className="py-1.5 pr-2">
                       <input
                         list="category-options"
-                        className={cellCls}
+                        className={`${cellCls} ${lockCls}`}
                         value={li.category}
                         placeholder="e.g. Helmets (Collection)"
+                        disabled={isSynced}
+                        title={isSynced ? lockTip : undefined}
                         onChange={(e) => updateItem(idx, { category: e.target.value })}
                       />
                     </td>
-                    <td className="py-1.5 pr-2"><input type="number" min={0} className={cellCls} value={li.qty} onChange={(e) => updateItem(idx, { qty: Number(e.target.value) || 0 })} /></td>
-                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={cellCls} value={li.costPrice} onChange={(e) => updateItem(idx, { costPrice: Number(e.target.value) || 0 })} /></td>
-                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={cellCls} value={li.retailPrice} onChange={(e) => updateItem(idx, { retailPrice: Number(e.target.value) || 0 })} /></td>
-                    <td className="py-1.5 pr-2 text-center"><input type="checkbox" checked={li.gstApplicable} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className="w-4 h-4 accent-[#FF5A00]" /></td>
+                    <td className="py-1.5 pr-2"><input type="number" min={0} className={`${cellCls} ${lockCls}`} value={li.qty} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { qty: Number(e.target.value) || 0 })} /></td>
+                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={`${cellCls} ${lockCls}`} value={li.costPrice} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { costPrice: Number(e.target.value) || 0 })} /></td>
+                    <td className="py-1.5 pr-2"><input type="number" step="0.01" min={0} className={`${cellCls} ${lockCls}`} value={li.retailPrice} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { retailPrice: Number(e.target.value) || 0 })} /></td>
+                    <td className="py-1.5 pr-2 text-center"><input type="checkbox" checked={li.gstApplicable} disabled={isSynced} title={isSynced ? lockTip : undefined} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className={`w-4 h-4 accent-accent ${lockCls}`} /></td>
+                    <td className="py-1.5 pr-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={li.shipIncluded !== false}
+                        disabled={isSynced}
+                        title={isSynced ? lockTip : undefined}
+                        onChange={(e) => updateItem(idx, { shipIncluded: e.target.checked })}
+                        className={`w-4 h-4 accent-accent ${lockCls}`}
+                        aria-label="Include this item in the shipping split"
+                      />
+                      {shipSurcharge > 0 && !li.hidden && li.shipIncluded !== false && (
+                        <div className="text-[10px] text-text-tertiary mt-0.5 tabular-nums">+${shipPerLine.toFixed(2)}</div>
+                      )}
+                    </td>
                     {/* Hide + Delete */}
                     <td className="py-1.5">
                       <div className="flex items-center gap-0.5 justify-center">
                         <button
                           onClick={() => updateItem(idx, { hidden: !li.hidden })}
-                          title={li.hidden ? "Show — will sync to Shopify" : "Hide — won't sync to Shopify"}
-                          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${li.hidden ? "text-amber-500 hover:text-accent bg-amber-50" : "text-text-tertiary hover:text-text-tertiary"}`}
+                          disabled={isSynced}
+                          title={isSynced ? lockTip : li.hidden ? "Show — will sync to Shopify" : "Hide — won't sync to Shopify"}
+                          className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${li.hidden ? "text-amber-500 hover:text-accent bg-amber-50" : "text-text-tertiary hover:text-text-tertiary"} ${lockCls}`}
                           aria-label={li.hidden ? "Show item" : "Hide item"}
                         >
                           {li.hidden ? (
@@ -1015,13 +1146,16 @@ export default function ReviewPurchaseOrderPage() {
                         </button>
                         <button
                           onClick={() => removeRow(idx)}
-                          className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-red-500 text-xl leading-none rounded transition-colors"
+                          disabled={isSynced}
+                          title={isSynced ? lockTip : undefined}
+                          className={`w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-red-500 text-xl leading-none rounded transition-colors ${lockCls}`}
                           aria-label="Remove row"
                         >&times;</button>
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1098,10 +1232,10 @@ export default function ReviewPurchaseOrderPage() {
       )}
 
       {mathDiscrepancy && (
-        <div className="mb-5 p-4 rounded-lg bg-red-50 border border-red-300 text-red-800 text-sm">
-          <p className="font-semibold">Mathematical discrepancy — sync blocked</p>
-          <p className="mt-0.5 text-red-700">
-            Line items sum to <strong>${total.toFixed(2)}</strong> but invoice total is <strong>${invoiceTotals?.grandTotal?.toFixed(2)}</strong> (Δ ${Math.abs(total - (invoiceTotals?.grandTotal ?? 0)).toFixed(2)}). Correct the line items or totals before syncing.
+        <div className="mb-5 p-4 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm">
+          <p className="font-semibold">Heads up — line items don&apos;t match the invoice total</p>
+          <p className="mt-0.5 text-amber-800">
+            Line items sum to <strong>${total.toFixed(2)}</strong> but the invoice total is <strong>${invoiceTotals?.grandTotal?.toFixed(2)}</strong> (Δ ${Math.abs(total - (invoiceTotals?.grandTotal ?? 0)).toFixed(2)}). This is fine for a partial receive — hide the lines you&apos;re not receiving (eye icon). Otherwise, fix the items or totals before syncing.
           </p>
           {gstSwitchWouldFix && (
             <button
@@ -1131,7 +1265,7 @@ export default function ReviewPurchaseOrderPage() {
           ) : (
             <button
               onClick={handlePreview}
-              disabled={isBusy || mathDiscrepancy}
+              disabled={isBusy}
               className="inline-flex items-center gap-2 bg-accent hover:bg-accent-dim disabled:opacity-50 text-white text-sm font-medium px-6 py-2.5 rounded transition-colors"
             >
               {previewing ? (
@@ -1191,8 +1325,8 @@ export default function ReviewPurchaseOrderPage() {
               </div>
             );
           })()}
-          <div className="bg-surface-1 border border-border-1 overflow-hidden mb-5">
-            <table className="w-full text-sm">
+          <div className="bg-surface-1 border border-border-1 overflow-x-auto mb-5">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="text-left bg-surface-1 border-b border-border-1">
                   <th className="px-4 py-3 text-[11px] font-semibold text-text-tertiary uppercase tracking-widest">Item</th>
@@ -1398,7 +1532,7 @@ export default function ReviewPurchaseOrderPage() {
                           <td className="px-4 py-3">
                             {(r.status === "synced" || isConfirmed) && (
                               <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full" title={r.matchedFromCache ? "Matched from saved mapping" : undefined}>
-                                ✅ {isConfirmed ? "Will sync (matched)" : r.matchedFromCache ? "Will sync · cached" : "Will sync"}
+                                ✅ {isConfirmed ? "Will sync (matched)" : "Will sync"}
                               </span>
                             )}
                             {r.status === "not_found" && !isConfirmed && (
@@ -1629,8 +1763,8 @@ export default function ReviewPurchaseOrderPage() {
               ← Back to edit
             </button>
           </div>
-          <div className="bg-surface-1 border border-border-1 overflow-hidden mb-6">
-            <table className="w-full text-sm">
+          <div className="bg-surface-1 border border-border-1 overflow-x-auto mb-6">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="text-left bg-surface-1 border-b border-border-1">
                   <th className="px-4 py-3 text-[11px] font-semibold text-text-tertiary uppercase tracking-widest">Item</th>
@@ -1658,11 +1792,14 @@ export default function ReviewPurchaseOrderPage() {
                     <td className="px-4 py-3">
                       {r.status === "synced" && (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full" title={r.matchedFromCache ? "Matched from saved mapping" : undefined}>
-                          ✅ Synced{r.matchedFromCache && <span className="text-emerald-500 ml-0.5">·cached</span>}
+                          ✅ Synced
                         </span>
                       )}
-                      {r.status === "not_found" && <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded-full" title={r.errorMessage}>⚠️ Not found</span>}
-                      {r.status === "error" && <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 px-2 py-1 rounded-full" title={r.errorMessage}>❌ Error</span>}
+                      {r.status === "not_found" && <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded-full">⚠️ Not found</span>}
+                      {r.status === "error" && <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 px-2 py-1 rounded-full">❌ Error</span>}
+                      {(r.status === "error" || r.status === "not_found") && r.errorMessage && (
+                        <p className="mt-1 text-[11px] text-text-secondary max-w-[260px] whitespace-normal break-words">{r.errorMessage}</p>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1671,16 +1808,18 @@ export default function ReviewPurchaseOrderPage() {
           </div>
           {syncResult.notFoundCount > 0 && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-4 py-3 mb-5">
-              Items marked &ldquo;Not found&rdquo; were not in Shopify.{" "}
+              Items marked &ldquo;Not found&rdquo; weren&rsquo;t in Shopify. Click{" "}
+              <strong>&ldquo;Back to edit&rdquo;</strong> — you can match them to an existing product or create
+              them right here, then re-sync. You can also{" "}
               <a
                 href="https://admin.shopify.com/products/new"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-accent hover:underline font-medium"
+                className="underline hover:text-amber-900"
               >
-                Create those products in Shopify →
+                create them in Shopify admin
               </a>{" "}
-              then click &ldquo;Back to edit&rdquo; and re-sync.
+              if you prefer.
             </p>
           )}
           <div className="flex justify-end">

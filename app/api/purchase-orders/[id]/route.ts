@@ -99,7 +99,13 @@ export async function DELETE(
           const qtyReversals = await Promise.allSettled(
             syncedItems.map((r) => adjustInventory(shop, r.inventoryItemId!, locationGid, -(r.delta!)))
           );
-          const qtyFailed = qtyReversals.filter((r) => r.status === "rejected");
+          // adjustInventory resolves with { userErrors } rather than throwing, so a
+          // Shopify-refused reversal (not stocked, stale GID, GraphQL error) would
+          // otherwise pass as "fulfilled". Count both a rejection AND any userErrors
+          // as a failure so we never delete a PO whose stock wasn't actually reversed.
+          const qtyFailed = qtyReversals.filter(
+            (r) => r.status === "rejected" || (r.status === "fulfilled" && (r.value?.userErrors?.length ?? 0) > 0)
+          );
           if (qtyFailed.length > 0) {
             return NextResponse.json(
               { error: `Stock reversal failed for ${qtyFailed.length} item(s). PO not deleted.` },
@@ -107,12 +113,14 @@ export async function DELETE(
             );
           }
 
-          // 2. Restore costs from costSnapshot
+          // 2. Restore costs from costSnapshot — only positive prior costs.
+          // A snapshot of 0 means "no prior cost on record"; pushing 0 would
+          // overwrite the item cost with a real $0.00 instead of leaving it.
           if (po.costSnapshot && Object.keys(po.costSnapshot).length > 0) {
             await Promise.allSettled(
-              Object.entries(po.costSnapshot).map(([invId, prevCost]) =>
-                updateInventoryItemCost(shop, invId, prevCost)
-              )
+              Object.entries(po.costSnapshot)
+                .filter(([, prevCost]) => typeof prevCost === "number" && prevCost > 0)
+                .map(([invId, prevCost]) => updateInventoryItemCost(shop, invId, prevCost))
             );
           }
         }

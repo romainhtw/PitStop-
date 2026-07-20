@@ -45,6 +45,7 @@ export default function CatalogPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [autoSync, setAutoSync] = useState<"unknown" | "on" | "off">("unknown");
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -104,6 +105,22 @@ export default function CatalogPage() {
   }
 
   useEffect(() => { load(); }, []);
+
+  // Reflect whether Shopify auto-sync is currently on, so the merchant sees live
+  // status rather than an Enable button that gives no feedback once it's done.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch("/api/shopify/webhooks/register");
+        const data = await res.json();
+        if (!cancelled) setAutoSync(data.enabled ? "on" : "off");
+      } catch {
+        if (!cancelled) setAutoSync("unknown");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const productTypes = useMemo(() => {
     const types = new Set(products.flatMap((p) => p.collections ?? []).filter(Boolean));
@@ -179,8 +196,7 @@ export default function CatalogPage() {
       SKU: p.sku || "",
       Barcode: p.barcode || "",
       Collection: (p.collections ?? [])[0] || "",
-      "In Store": p.onHandQtyStore ?? 0,
-      Warehouse: p.onHandQtyWarehouse ?? 0,
+      Stock: (p.onHandQtyStore ?? 0) + (p.onHandQtyWarehouse ?? 0),
       "Cost ($)": p.unitCost != null ? p.unitCost : "",
       "Retail ($)": p.price,
       "Margin (%)": p.unitCost && p.price > 0 ? parseFloat((((p.price - p.unitCost) / p.price) * 100).toFixed(1)) : "",
@@ -268,8 +284,15 @@ export default function CatalogPage() {
       const res = await apiFetch("/api/shopify/webhooks/register", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed");
-      const allOk = data.results.every((r: { success: boolean }) => r.success);
-      setSyncMsg(allOk ? "Webhooks registered — Shopify will now push updates automatically" : `Partial: ${JSON.stringify(data.results)}`);
+      const okCount = data.okCount ?? (data.results?.filter((r: { success: boolean }) => r.success).length ?? 0);
+      const total = data.total ?? (data.results?.length ?? 0);
+      const allOn = total > 0 && okCount === total;
+      setAutoSync(allOn ? "on" : "off");
+      setSyncMsg(
+        allOn
+          ? "Auto-sync is on — Shopify pushes product and stock changes automatically."
+          : `Auto-sync enabled for ${okCount} of ${total} updates. Try again, or contact support if it persists.`
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Registration failed");
     } finally {
@@ -306,7 +329,7 @@ export default function CatalogPage() {
                       type="checkbox"
                       checked={selectedCollections.has(c.title)}
                       onChange={() => toggleCollection(c.title)}
-                      className="w-4 h-4 accent-[#FF5A00]"
+                      className="w-4 h-4 accent-accent"
                     />
                     <span className="flex-1 text-sm text-text-primary">{c.title}</span>
                     <span className="text-xs font-mono text-text-tertiary">{c.count}</span>
@@ -337,7 +360,7 @@ export default function CatalogPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-sans font-semibold tracking-tight text-text-primary mb-0.5">Product Catalog</h1>
           <p className="text-text-tertiary text-sm font-mono">
@@ -346,11 +369,11 @@ export default function CatalogPage() {
               : "Pull your active Shopify products here"}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap lg:justify-end gap-2">
           {products.length > 0 && (
             <button
               onClick={handleExportXlsx}
-              className="inline-flex items-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors"
+              className="inline-flex items-center justify-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -361,28 +384,46 @@ export default function CatalogPage() {
           <button
             onClick={handleBackfillCollections}
             disabled={syncing || registering}
-            className="inline-flex items-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
+            className="inline-flex items-center justify-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
           >
             {syncing ? "…" : "Update Collections"}
           </button>
           <button
             onClick={handleRegisterWebhooks}
             disabled={registering || syncing}
-            className="inline-flex items-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
+            title={
+              autoSync === "on"
+                ? "Auto-sync is on — Shopify pushes product & stock changes. Click to re-check."
+                : "Turn on automatic updates from Shopify (products & stock)."
+            }
+            className={
+              autoSync === "on"
+                ? "inline-flex items-center justify-center gap-1.5 text-sm border border-green-600/40 bg-green-600/10 text-green-700 hover:border-green-600/60 px-3 py-2 transition-colors disabled:opacity-40"
+                : "inline-flex items-center justify-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
+            }
           >
-            {registering ? "Registering…" : "Enable Auto-Sync"}
+            {registering ? (
+              "Registering…"
+            ) : autoSync === "on" ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-green-600" />
+                Auto-Sync On
+              </>
+            ) : (
+              "Enable Auto-Sync"
+            )}
           </button>
           <button
             onClick={openImportModal}
             disabled={syncing || registering}
-            className="inline-flex items-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
+            className="inline-flex items-center justify-center gap-1.5 text-sm border border-border-1 text-text-secondary hover:text-text-primary hover:border-border-2 px-3 py-2 transition-colors disabled:opacity-40"
           >
             Choose collections
           </button>
           <button
             onClick={() => handleSync()}
             disabled={syncing || registering}
-            className="inline-flex items-center gap-2 bg-accent hover:bg-accent-dim disabled:opacity-40 text-white text-sm font-medium px-4 py-2 border border-accent transition-colors"
+            className="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent-dim disabled:opacity-40 text-white text-sm font-medium px-4 py-2 border border-accent transition-colors col-span-2 sm:col-span-1"
           >
             {syncing ? (
               <>
@@ -474,6 +515,7 @@ export default function CatalogPage() {
           <input
             type="text"
             placeholder="Search name, SKU, barcode…"
+            aria-label="Search catalog"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-48 bg-surface-2 border border-border-1 text-text-primary placeholder:text-text-tertiary px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors"
@@ -529,8 +571,7 @@ export default function CatalogPage() {
                   <th className="px-4 py-2.5 text-[10px] font-mono font-semibold uppercase tracking-widest text-text-tertiary">Variant</th>
                   <th className="px-4 py-2.5 text-[10px] font-mono font-semibold uppercase tracking-widest text-text-tertiary">SKU</th>
                   <th className="px-4 py-2.5 text-[10px] font-mono font-semibold uppercase tracking-widest text-text-tertiary">Collection</th>
-                  <SortTh col="onHand" label="In Store" />
-                  <SortTh col="onHand" label="Whouse" />
+                  <SortTh col="onHand" label="Stock" />
                   <SortTh col="unitCost" label="Cost" />
                   <SortTh col="price" label="Retail" />
                   <SortTh col="margin" label="Margin" />
@@ -539,7 +580,7 @@ export default function CatalogPage() {
               <tbody>
                 {sorted.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-text-tertiary font-mono text-sm">
+                    <td colSpan={8} className="px-4 py-12 text-center text-text-tertiary font-mono text-sm">
                       No results
                     </td>
                   </tr>
@@ -548,8 +589,7 @@ export default function CatalogPage() {
                     const margin = p.unitCost && p.price > 0
                       ? ((p.price - p.unitCost) / p.price) * 100
                       : null;
-                    const storeQty = p.onHandQtyStore ?? 0;
-                    const whQty = p.onHandQtyWarehouse ?? 0;
+                    const stockQty = (p.onHandQtyStore ?? 0) + (p.onHandQtyWarehouse ?? 0);
                     return (
                       <tr key={p.variantId} className="border-b border-border-0 last:border-0 hover:bg-surface-2 transition-colors">
                         <td className="px-4 py-3 font-medium text-text-primary">{p.productTitle}</td>
@@ -569,8 +609,7 @@ export default function CatalogPage() {
                             </span>
                           ) : <span className="text-text-tertiary">—</span>}
                         </td>
-                        <td className="px-4 py-3 text-right"><StockBadge qty={storeQty} /></td>
-                        <td className="px-4 py-3 text-right"><StockBadge qty={whQty} /></td>
+                        <td className="px-4 py-3 text-right"><StockBadge qty={stockQty} /></td>
                         <td className="px-4 py-3 text-right text-text-secondary text-xs font-mono tabular-nums">
                           {p.unitCost != null ? `$${p.unitCost.toFixed(2)}` : <span className="text-text-tertiary">—</span>}
                         </td>

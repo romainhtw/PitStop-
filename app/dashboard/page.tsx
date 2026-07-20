@@ -77,8 +77,8 @@ function DeleteButton({ po, onDelete }: { po: PurchaseOrder; onDelete: (id: stri
   return (
     <button
       onClick={() => setConfirming(true)}
-      className="w-5 h-5 flex items-center justify-center text-text-tertiary hover:text-status-shortage transition-colors"
-      aria-label="Delete"
+      className="w-11 h-11 lg:w-5 lg:h-5 flex items-center justify-center text-text-tertiary hover:text-status-shortage transition-colors"
+      aria-label="Delete purchase order"
     >
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
         <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square"/>
@@ -115,6 +115,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [reusing, setReusing] = useState<string | null>(null);
+  const [reuseError, setReuseError] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch("/api/purchase-orders")
@@ -125,6 +126,7 @@ export default function DashboardPage() {
 
   async function handleReuse(po: PurchaseOrder) {
     setReusing(po.id);
+    setReuseError(null);
     try {
       const res = await apiFetch("/api/purchase-orders", {
         method: "POST",
@@ -139,10 +141,16 @@ export default function DashboardPage() {
           invoiceTotals: po.invoiceTotals,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't reuse this order");
       router.push(`/purchase-orders/${data.id}/review`);
-    } catch {
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : "Couldn't reuse this order";
+      setReuseError(
+        /failed to fetch|networkerror|load failed/i.test(raw)
+          ? "Couldn't reach the server — check your connection and try again."
+          : raw
+      );
       setReusing(null);
     }
   }
@@ -184,27 +192,34 @@ export default function DashboardPage() {
     <div className="p-4 lg:p-8 max-w-7xl">
 
       {/* Page header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
         <div>
           <h1 className="font-sans text-2xl font-semibold text-text-primary tracking-tight">Dashboard</h1>
           <p className="text-xs text-text-tertiary mt-0.5 font-mono">Inventory at a glance</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/purchase-orders/new/manual">
-            <Button variant="secondary" size="sm">+ Manual order</Button>
+        {/* Primary actions — full-width stacked on mobile, inline on desktop */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Link href="/purchase-orders/new/manual" className="w-full sm:w-auto">
+            <Button variant="secondary" size="sm" className="w-full sm:w-auto min-h-[40px] sm:min-h-0">+ Manual order</Button>
           </Link>
-          <Link href="/purchase-orders/new">
-            <Button variant="primary" size="sm">+ Upload invoice</Button>
+          <Link href="/purchase-orders/new" className="w-full sm:w-auto">
+            <Button variant="primary" size="sm" className="w-full sm:w-auto min-h-[40px] sm:min-h-0">+ Upload invoice</Button>
           </Link>
         </div>
       </div>
 
+      {reuseError && (
+        <div role="alert" className="mb-4 flex items-center justify-between gap-3 bg-status-shortage-bg border border-status-shortage/30 px-4 py-2.5">
+          <span className="text-sm text-status-shortage">{reuseError}</span>
+          <button onClick={() => setReuseError(null)} className="text-xs text-text-tertiary hover:text-text-secondary shrink-0">Dismiss</button>
+        </div>
+      )}
+
       {/* Stat strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px border border-border-0 bg-border-0 mb-6 overflow-hidden">
+      <div className="grid grid-cols-3 gap-px border border-border-0 bg-border-0 mb-6 overflow-hidden">
         <StatCard label="Cost Value"  value={fmt(totalCost)}   loading={loading} />
         <StatCard label="Retail Value" value={fmt(totalRetail)} loading={loading} />
         <StatCard label="Total Items" value={totalItems}        loading={loading} />
-        <StatCard label="Stock Alerts" value="—" loading={false} href="/catalog" />
       </div>
 
       {/* Purchase Orders table */}
@@ -223,6 +238,7 @@ export default function DashboardPage() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Supplier, invoice, date…"
+              aria-label="Search purchase orders"
               className="w-full pl-7 pr-3 h-7 text-xs bg-surface-2 border border-border-0 text-text-primary placeholder:text-text-tertiary font-mono focus:outline-none focus:border-border-2 focus:ring-2 focus:ring-[var(--ps-focus)] transition-colors"
             />
           </div>
@@ -272,7 +288,7 @@ export default function DashboardPage() {
                       </Link>
                       <div className="flex items-center gap-3">
                         <button onClick={() => handleReuse(po)} disabled={reusing === po.id} className="text-xs text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-50">
-                          {reusing === po.id ? "…" : "Reuse"}
+                          {reusing === po.id ? "Creating…" : "Reuse"}
                         </button>
                         <DeleteButton po={po} onDelete={handleDelete} />
                       </div>

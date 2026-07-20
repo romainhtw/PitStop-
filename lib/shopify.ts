@@ -19,6 +19,9 @@ export async function shopifyFetch<T = unknown>(
   if (!s) throw new Error("SHOP_NOT_INSTALLED");
 
   const url = `https://${shop}/admin/api/${API_VERSION}/graphql.json`;
+  // A 5xx after a MUTATION may have already applied server-side — retrying would
+  // double-apply (e.g. inventory writes). Only read queries are safe to retry on 5xx.
+  const isMutation = /\bmutation\b/.test(query);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch(url, {
@@ -30,8 +33,9 @@ export async function shopifyFetch<T = unknown>(
       body: JSON.stringify({ query, variables }),
     });
 
-    // 429 or 5xx — back off and retry
-    if (res.status === 429 || res.status >= 500) {
+    // 429 (rate limit, pre-execution) is always safe to retry. A 5xx is only
+    // retried for read queries — never for mutations, which may have applied.
+    if (res.status === 429 || (res.status >= 500 && !isMutation)) {
       if (attempt < maxRetries) {
         await jitterDelay(attempt);
         continue;
@@ -86,6 +90,21 @@ interface PrimaryLocationData {
 export async function getPrimaryLocationGid(shop: string): Promise<string | null> {
   const result = await shopifyFetch<PrimaryLocationData>(shop, PRIMARY_LOCATION_QUERY);
   return result?.data?.locations?.nodes?.[0]?.id ?? null;
+}
+
+const LOCATIONS_QUERY = /* GraphQL */ `
+  query GetLocations {
+    locations(first: 20, query: "status:active") {
+      nodes { id name }
+    }
+  }
+`;
+
+// The shop's own active Shopify locations — used to populate the PO location
+// picker per-merchant (never hard-code another store's locations).
+export async function fetchActiveLocations(shop: string): Promise<Array<{ id: string; name: string }>> {
+  const result = await shopifyFetch<{ locations: { nodes: Array<{ id: string; name: string }> } }>(shop, LOCATIONS_QUERY);
+  return result?.data?.locations?.nodes ?? [];
 }
 
 export const FIND_VARIANT_QUERY = /* GraphQL */ `
@@ -179,7 +198,8 @@ export async function batchAdjustInventory(
   shop: string,
   changes: BatchAdjustChange[],
   reason: string,
-  referenceDocumentUri: string
+  referenceDocumentUri: string,
+  name: string = "available"
 ): Promise<{ userErrors: Array<{ field: string; message: string }>; groupId?: string }> {
   if (changes.length === 0) return { userErrors: [] };
 
@@ -190,7 +210,7 @@ export async function batchAdjustInventory(
   for (let i = 0; i < changes.length; i += CHUNK) {
     const chunk = changes.slice(i, i + CHUNK);
     const result = await shopifyFetch<BatchAdjustData>(shop, BATCH_ADJUST_MUTATION, {
-      input: { name: "available", reason, referenceDocumentUri, changes: chunk },
+      input: { name, reason, referenceDocumentUri, changes: chunk },
     });
     const data = result?.data?.inventoryAdjustQuantities;
     if (data?.userErrors?.length) allErrors.push(...data.userErrors);
@@ -401,6 +421,7 @@ export const CATALOG_QUERY = /* GraphQL */ `
                 barcode
                 price
                 compareAtPrice
+                inventoryQuantity
                 inventoryItem { id }
               }
             }
@@ -432,6 +453,7 @@ interface CatalogData {
               barcode: string;
               price: string;
               compareAtPrice: string | null;
+              inventoryQuantity: number | null;
               inventoryItem: { id: string };
             };
           }>;
@@ -451,6 +473,7 @@ export interface CatalogVariant {
   price: number;
   compareAtPrice: number | null;
   inventoryItemId: string;
+  inventoryQuantity: number;
   productType: string;
   collections: string[];
   status: string;
@@ -481,6 +504,7 @@ export async function fetchVariantsPage(
         price: parseFloat(v.price) || 0,
         compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : null,
         inventoryItemId: v.inventoryItem.id,
+        inventoryQuantity: v.inventoryQuantity ?? 0,
         productType: p.productType || "",
         collections: p.collections.edges.map((e) => e.node.title),
         status: p.status,
@@ -512,6 +536,16 @@ export const REGISTER_WEBHOOK_MUTATION = /* GraphQL */ `
     ) {
       userErrors { field message }
       webhookSubscription { id topic }
+    }
+  }
+`;
+
+// Lists the shop's currently-registered webhook topics so the UI can tell the
+// merchant whether auto-sync is already on (rather than only offering to enable it).
+export const LIST_WEBHOOKS_QUERY = /* GraphQL */ `
+  query ListWebhooks {
+    webhookSubscriptions(first: 100) {
+      edges { node { topic } }
     }
   }
 `;
@@ -763,11 +797,15 @@ export async function updateInventoryItemCost(
   shop: string,
   inventoryItemId: string,
   cost: number
-): Promise<void> {
-  await shopifyFetch(shop, UPDATE_ITEM_COST_MUTATION, {
-    id: inventoryItemId,
-    input: { cost: cost.toFixed(4) },
-  });
+): Promise<{ userErrors: Array<{ field: string; message: string }> }> {
+  const result = await shopifyFetch<{ inventoryItemUpdate: { userErrors: Array<{ field: string; message: string }> } }>(
+    shop,
+    UPDATE_ITEM_COST_MUTATION,
+    { id: inventoryItemId, input: { cost: cost.toFixed(4) } }
+  );
+  const userErrors = result?.data?.inventoryItemUpdate?.userErrors ?? [];
+  const top = (result?.errors ?? []).map((e) => ({ field: "", message: e.message }));
+  return { userErrors: [...userErrors, ...top] };
 }
 
 const MOVE_INVENTORY_MUTATION = /* GraphQL */ `
@@ -824,18 +862,28 @@ export async function moveInventory(
   const result = await shopifyFetch<MoveInventoryData>(shop, MOVE_INVENTORY_MUTATION, {
     input: {
       reason: "correction",
+      // Shopify's current schema requires nested from/to terminal objects, each
+      // naming the ledger ("available"). The old flat fromLocationId/toLocationId
+      // shape is silently rejected at the GraphQL layer → zero stock moved.
       changes: changes.map((c) => ({
         inventoryItemId: c.inventoryItemId,
-        fromLocationId: c.fromLocationId,
-        toLocationId: c.toLocationId,
         quantity: c.quantity,
+        from: { locationId: c.fromLocationId, name: "available" },
+        to: { locationId: c.toLocationId, name: "available" },
       })),
     },
   });
 
+  // Surface top-level GraphQL errors too — a rejected mutation returns no data,
+  // which would otherwise be misread as a successful no-op move.
   const data = result?.data?.inventoryMoveQuantities;
-  return {
-    userErrors: data?.userErrors ?? [],
-    groupId: data?.inventoryAdjustmentGroup?.id,
-  };
+  const userErrors = [
+    ...(data?.userErrors ?? []),
+    ...((result?.errors ?? []).map((e) => ({ field: "", message: e.message }))),
+  ];
+  const groupId = data?.inventoryAdjustmentGroup?.id;
+  if (!groupId && userErrors.length === 0) {
+    userErrors.push({ field: "", message: "Inventory move returned no result — nothing was moved." });
+  }
+  return { userErrors, groupId };
 }

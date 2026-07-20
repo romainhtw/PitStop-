@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import PitStopLogo from "@/components/PitStopLogo";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — PitStop",
@@ -11,6 +13,10 @@ export default function PrivacyPage() {
   return (
     <main className="min-h-screen px-6 py-12">
       <article className="mx-auto max-w-3xl">
+        <div className="mb-8 flex items-center justify-between border-b border-border-0 pb-4">
+          <PitStopLogo className="text-accent" />
+          <Link href="/support" className="text-sm text-accent hover:text-accent-dim transition-colors">Support</Link>
+        </div>
         <h1 className="text-2xl font-sans font-semibold tracking-tight text-text-primary mb-1">
           Privacy Policy
         </h1>
@@ -35,8 +41,7 @@ export default function PrivacyPage() {
               <li>Inventory quantities and item costs, which the App updates on your instruction (write).</li>
               <li>Store locations (read), to apply stock changes to the correct location.</li>
               <li>
-                Supplier invoices and purchase-order details you upload or enter, and an audit log of the sync
-                actions you perform.
+                Supplier invoices and purchase-order details you upload or enter.
               </li>
             </ul>
             <p className="mt-2 font-medium text-text-primary">

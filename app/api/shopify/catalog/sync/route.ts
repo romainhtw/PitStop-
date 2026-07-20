@@ -67,7 +67,11 @@ async function syncPage(req: NextRequest) {
       ...v,
       merchantId,
       syncedAt,
-      onHandQtyStore: storeLevel?.onHandQty ?? 0,
+      // Total available across ALL the shop's locations (matches Shopify's
+      // "Available" column). Reading a single location under-reports stock for
+      // multi-location merchants. Cost is location-agnostic, so the primary-
+      // location unitCost is fine.
+      onHandQtyStore: v.inventoryQuantity ?? 0,
       onHandQtyWarehouse: 0,
       unitCost: storeLevel?.unitCost ?? null,
     };

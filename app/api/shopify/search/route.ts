@@ -132,9 +132,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const ql = q.toLowerCase().trim();
     for (const edge of [...(skuResults?.data?.productVariants?.edges ?? []), ...(barcodeResults?.data?.productVariants?.edges ?? [])]) {
       const v = edge.node;
       if (seen.has(v.id)) continue;
+      // Shopify code search is tokenized — only treat as a confident code hit
+      // when the SKU or barcode matches EXACTLY (else it's a loose token match).
+      const exactCode = v.sku?.toLowerCase().trim() === ql || v.barcode?.toLowerCase().trim() === ql;
+      if (!exactCode) continue;
       seen.add(v.id);
       scored.push({
         score: 95,

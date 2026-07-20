@@ -38,6 +38,15 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString();
     const id = body.id || uuidv4();
 
+    // Ownership guard: if a doc id was supplied and already exists, it must belong
+    // to THIS merchant — otherwise set() would overwrite another merchant's PO.
+    if (body.id) {
+      const existing = await adminDb.collection("purchaseOrders").doc(id).get();
+      if (existing.exists && (existing.data() as PurchaseOrder).merchantId !== merchantId) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+    }
+
     const po: PurchaseOrder = {
       id,
       merchantId,
@@ -45,7 +54,7 @@ export async function POST(req: NextRequest) {
       invoiceNumber: body.invoiceNumber || "",
       invoiceDate: body.invoiceDate || "",
       orderNumber: body.orderNumber || "",
-      location: body.location || "In-Store Fitzgerald St",
+      location: body.location || "",
       paymentTerms: body.paymentTerms || "",
       lineItems: body.lineItems || [],
       shippingCost: body.shippingCost ?? 0,

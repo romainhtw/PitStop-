@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import { waitUntil } from "@vercel/functions";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { requireShop } from "@/lib/shopify/requireShop";
+import { checkBillingAccess, billingBlock } from "@/lib/shopify/billing";
 import type { PurchaseOrder } from "@/lib/types";
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -38,6 +39,8 @@ export async function POST(req: NextRequest) {
 
     const shop = await requireShop(req);
     if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const billing = billingBlock(await checkBillingAccess(shop));
+    if (billing) return NextResponse.json(billing.body, { status: billing.status });
     const merchantId = shop;
 
     const formData = await req.formData();
@@ -199,7 +202,9 @@ export async function POST(req: NextRequest) {
       currency: (parsed.currency as string) || "AUD",
       taxVatNumber: (parsed.taxVatNumber as string) || "",
       orderNumber: (parsed.orderNumber as string) || "",
-      location: "In-Store Fitzgerald St",
+      // Left blank — the review screen defaults it to the shop's own primary
+      // Shopify location (never hard-code another store's location).
+      location: "",
       paymentTerms: (parsed.paymentTerms as string) || "",
       invoiceTotals: totals ? {
         subtotal: Number(totals.subtotal) || 0,
@@ -244,7 +249,8 @@ export async function POST(req: NextRequest) {
     // Upsert supplier in background — use waitUntil so Vercel doesn't freeze before the write completes
     if (parsed.supplier) {
       const supplierName = parsed.supplier as string;
-      const nameKey = supplierName.toLowerCase().trim();
+      // Firestore doc ids cannot contain "/" — strip slashes (e.g. "TMO SPORTS P/L").
+      const nameKey = supplierName.toLowerCase().trim().replace(/[/\\]+/g, "-");
       // Tenant-scoped doc id — see app/api/suppliers/[name]/route.ts
       const docId = `${merchantId}__${nameKey}`;
       waitUntil(

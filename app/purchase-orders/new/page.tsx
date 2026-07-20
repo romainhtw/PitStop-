@@ -17,6 +17,14 @@ const STEPS = [
 function ParseProgress({ filename }: { filename: string | null }) {
   const [stepIdx, setStepIdx] = useState(0);
   const [pct, setPct] = useState(0);
+  const [slow, setSlow] = useState(false);
+
+  // Honest stall reassurance — the bar is perceived-progress, so once it parks
+  // near the end tell the user we're still working rather than looking frozen.
+  useEffect(() => {
+    const id = setTimeout(() => setSlow(true), 12000);
+    return () => clearTimeout(id);
+  }, []);
 
   useEffect(() => {
     const target = STEPS[stepIdx]?.pct ?? 94;
@@ -61,6 +69,11 @@ function ParseProgress({ filename }: { filename: string | null }) {
       {filename && (
         <p className="text-xs text-text-tertiary truncate max-w-full px-4">{filename}</p>
       )}
+      {slow && (
+        <p className="text-xs text-text-tertiary text-center px-4">
+          Still working — large or scanned invoices can take a little longer.
+        </p>
+      )}
     </div>
   );
 }
@@ -76,7 +89,13 @@ export default function NewPurchaseOrderPage() {
   const handleFile = useCallback(
     async (file: File) => {
       setError(null);
-      if (file.type !== "application/pdf") {
+      // Phone "Files"/scan flows often hand back an empty or octet-stream MIME for
+      // a real PDF — fall back to the .pdf extension before rejecting.
+      const looksPdf =
+        file.type === "application/pdf" ||
+        ((file.type === "" || file.type === "application/octet-stream") &&
+          /\.pdf$/i.test(file.name));
+      if (!looksPdf) {
         setError("Please upload a PDF file.");
         return;
       }
@@ -97,7 +116,9 @@ export default function NewPurchaseOrderPage() {
           );
         }
 
-        if (data.error) throw new Error(data.error as string);
+        // Prefer a human-readable `message` (e.g. billing check couldn't be
+        // verified — 503) over the raw error code.
+        if (data.error) throw new Error((data.message as string) || (data.error as string));
         if (!data.id) throw new Error("Unexpected response from server — please try again.");
         router.push(`/purchase-orders/${data.id}/review`);
       } catch (e) {
@@ -123,6 +144,10 @@ export default function NewPurchaseOrderPage() {
       </p>
 
       <div
+        role="button"
+        tabIndex={loading ? -1 : 0}
+        aria-label="Upload invoice PDF"
+        aria-disabled={loading || undefined}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => {
@@ -132,7 +157,13 @@ export default function NewPurchaseOrderPage() {
           if (file) handleFile(file);
         }}
         onClick={() => !loading && inputRef.current?.click()}
-        className={`border-2 border-dashed py-16 px-12 text-center transition-colors ${
+        onKeyDown={(e) => {
+          if ((e.key === "Enter" || e.key === " ") && !loading) {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        className={`border-2 border-dashed py-16 px-12 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
           loading
             ? "border-border-1 bg-surface-1 cursor-default"
             : dragging
@@ -144,6 +175,7 @@ export default function NewPurchaseOrderPage() {
           ref={inputRef}
           type="file"
           accept="application/pdf"
+          aria-label="Invoice PDF file"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];

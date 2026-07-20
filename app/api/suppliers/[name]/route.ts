@@ -6,7 +6,9 @@ import type { SupplierProfile } from "@/lib/types";
 export const runtime = "nodejs";
 
 function supplierNameKey(name: string) {
-  return decodeURIComponent(name).toLowerCase().trim();
+  // Firestore doc ids cannot contain "/" (path separator) — supplier names like
+  // "TMO SPORTS P/L" would otherwise produce an invalid path. Strip slashes.
+  return decodeURIComponent(name).toLowerCase().trim().replace(/[/\\]+/g, "-");
 }
 
 // Tenant-scoped Firestore document id: prevents one tenant's supplier doc from

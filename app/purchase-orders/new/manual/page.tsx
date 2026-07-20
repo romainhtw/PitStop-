@@ -16,7 +16,8 @@ export default function ManualPurchaseOrderPage() {
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [orderNumber, setOrderNumber] = useState("");
-  const [location, setLocation] = useState<PurchaseOrder["location"]>("In-Store Fitzgerald St");
+  const [location, setLocation] = useState<PurchaseOrder["location"]>("");
+  const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [currency, setCurrency] = useState("AUD");
   const [paymentTerms, setPaymentTerms] = useState("");
   const [lineItems, setLineItems] = useState<LineItem[]>([
@@ -29,6 +30,18 @@ export default function ManualPurchaseOrderPage() {
 
   useEffect(() => {
     loadCatalog(false, setCatalog).then(setCatalog).catch(() => {});
+  }, []);
+
+  // Populate the location picker with THIS shop's own Shopify locations.
+  useEffect(() => {
+    apiFetch("/api/shopify/locations")
+      .then((r) => (r.ok ? r.json() : { locations: [] }))
+      .then((data: { locations?: Array<{ id: string; name: string }> }) => {
+        const list = data.locations ?? [];
+        setLocations(list);
+        setLocation((prev) => (prev && list.some((l) => l.name === prev) ? prev : list[0]?.name ?? ""));
+      })
+      .catch(() => {});
   }, []);
 
   // Add a product from the catalog as a prefilled line item
@@ -156,8 +169,10 @@ export default function ManualPurchaseOrderPage() {
           <div>
             <label className="text-xs text-text-secondary mb-1 block">Location</label>
             <select className={inputCls} value={location} onChange={(e) => setLocation(e.target.value as PurchaseOrder["location"])}>
-              <option value="In-Store Fitzgerald St">In-Store Fitzgerald St</option>
-              <option value="Warehouse">Warehouse</option>
+              {locations.length === 0 && <option value="">Loading locations…</option>}
+              {locations.map((l) => (
+                <option key={l.id} value={l.name}>{l.name}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -232,7 +247,7 @@ export default function ManualPurchaseOrderPage() {
                     <input type="number" step="0.01" min={0} className={cellCls} value={li.retailPrice} onChange={(e) => updateItem(idx, { retailPrice: Number(e.target.value) || 0 })} />
                   </td>
                   <td className="py-1.5 pr-2 text-center">
-                    <input type="checkbox" checked={li.gstApplicable} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className="w-4 h-4 accent-[#FF5A00]" />
+                    <input type="checkbox" checked={li.gstApplicable} onChange={(e) => updateItem(idx, { gstApplicable: e.target.checked })} className="w-4 h-4 accent-accent" />
                   </td>
                   <td className="py-1.5">
                     <button onClick={() => removeRow(idx)} className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-red-500 text-xl leading-none rounded transition-colors">&times;</button>

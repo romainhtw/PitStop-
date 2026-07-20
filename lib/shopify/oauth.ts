@@ -7,7 +7,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 const API_KEY    = process.env.SHOPIFY_API_KEY!;
 const API_SECRET = process.env.SHOPIFY_API_SECRET!;
 const APP_URL    = process.env.SHOPIFY_APP_URL!;
-const SCOPES     = process.env.SHOPIFY_SCOPES || "read_products,read_locations,write_inventory";
+const SCOPES     = process.env.SHOPIFY_SCOPES || "write_products,read_locations,write_inventory";
 
 /** Validates that the shop domain looks like *.myshopify.com */
 export function isValidShop(shop: string): boolean {

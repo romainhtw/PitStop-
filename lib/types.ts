@@ -27,6 +27,9 @@ export interface LineItem {
   retailPrice: number;
   gstApplicable: boolean;
   hidden?: boolean;
+  // Whether this line shares in the shipping/landed-cost allocation. Undefined =
+  // included (default). Set false to exclude it from the even shipping split.
+  shipIncluded?: boolean;
 }
 
 export interface VariantSuggestion {
@@ -71,6 +74,7 @@ export interface SyncResult {
   successCount: number;
   notFoundCount: number;
   errorCount: number;
+  costErrorCount?: number;
   duplicateInvoice?: { detectedAt: string; originalPoId: string };
   locationInactive?: boolean;
 }
@@ -127,27 +131,6 @@ export interface ShopifyProduct {
   unitCost?: number | null;
 }
 
-export interface AuditLog {
-  id: string;
-  merchantId?: string;
-  poId: string;
-  supplier: string;
-  invoiceNumber: string;
-  location: string;
-  syncedAt: string;
-  successCount: number;
-  notFoundCount: number;
-  errorCount: number;
-  referenceDocumentUri: string;
-  items: Array<{
-    name: string;
-    sku: string;
-    status: string;
-    delta?: number;
-    landedCost?: number;
-  }>;
-}
-
 export interface PurchaseOrder {
   id: string;
   merchantId?: string;
@@ -158,7 +141,7 @@ export interface PurchaseOrder {
   exchangeRate?: number;
   taxVatNumber?: string;
   orderNumber: string;
-  location: "In-Store Fitzgerald St" | "Warehouse";
+  location: string;
   paymentTerms: string;
   lineItems: LineItem[];
   shippingCost: number;

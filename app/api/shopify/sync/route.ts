@@ -9,13 +9,16 @@ import {
   updateInventoryItemCost,
   checkLocation,
   getPrimaryLocationGid,
+  fetchActiveLocations,
   activateInventoryItems,
 } from "@/lib/shopify";
 import { requireShop } from "@/lib/shopify/requireShop";
+import { checkBillingAccess, billingBlock } from "@/lib/shopify/billing";
 import { lookupMapping, saveMapping, lookupNameMapping, saveNameMapping } from "@/lib/adminMappings";
-import type { AuditLog, PurchaseOrder, LineSyncResult, SyncResult, VariantSuggestion } from "@/lib/types";
+import type { PurchaseOrder, LineSyncResult, SyncResult, VariantSuggestion } from "@/lib/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 // Returns option values that look like model identifiers (contain digits: "57|64", "DT 240", "12x100")
 function modelOptionTokens(optionValues?: Array<{ optionName: string; optionValue: string }>): string {
@@ -129,25 +132,29 @@ function titleScore(productTitle: string, lineItemName: string): number {
   return Math.round((score / totalWeight) * 90);
 }
 
+// Even (balanced) allocation: split the total surcharge equally across every
+// INCLUDED line, then divide each line's share by its qty to get a per-unit
+// landed-cost add-on. Lines the user excluded (shipIncluded === false) get 0.
+// Returns a per-unit landed-cost addition per item, index-aligned with `items`.
 function allocateLandedCosts(
-  items: Array<{ costPrice: number; qty: number }>,
+  items: Array<{ qty: number; included: boolean }>,
   totals: { freightShipping?: number; insurance?: number; customsTariffs?: number; brokerageFees?: number } | undefined
 ): number[] {
   if (!totals) return items.map(() => 0);
   const totalSurcharge = (totals.freightShipping ?? 0) + (totals.insurance ?? 0) + (totals.customsTariffs ?? 0) + (totals.brokerageFees ?? 0);
   if (totalSurcharge <= 0) return items.map(() => 0);
-  const invoiceValue = items.reduce((sum, it) => sum + it.costPrice * it.qty, 0);
-  if (invoiceValue <= 0) return items.map(() => 0);
-  return items.map((it) => {
-    const share = (it.costPrice * it.qty) / invoiceValue;
-    return parseFloat(((share * totalSurcharge) / Math.max(it.qty, 1)).toFixed(4));
-  });
+  const includedCount = items.filter((it) => it.included).length;
+  if (includedCount === 0) return items.map(() => 0);
+  const perLine = totalSurcharge / includedCount;
+  return items.map((it) => (it.included ? parseFloat((perLine / Math.max(it.qty, 1)).toFixed(4)) : 0));
 }
 
 export async function POST(req: NextRequest) {
   try {
     const shop = await requireShop(req);
     if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    const billing = billingBlock(await checkBillingAccess(shop));
+    if (billing) return NextResponse.json(billing.body, { status: billing.status });
     const merchantId = shop;
 
     type SyncOverride = { variantId: string; inventoryItemId: string; productTitle: string };
@@ -199,8 +206,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Resolve location GID from this shop's primary active location
-    const locationGid = await getPrimaryLocationGid(shop);
+    // Use the location the user picked on the PO (a Shopify location GID) when
+    // present; otherwise fall back to this shop's primary active location. Legacy
+    // POs with a non-GID location value also fall back to primary.
+    // po.location holds the location NAME the user picked (or a legacy GID).
+    // Resolve it to a GID against this shop's locations; fall back to primary.
+    const picked = (po.location || "").trim();
+    let locationGid: string | null = null;
+    if (picked.startsWith("gid://shopify/Location/")) {
+      locationGid = picked; // back-compat with older POs that stored a GID
+    } else if (picked) {
+      const locs = await fetchActiveLocations(shop);
+      locationGid = locs.find((l) => l.name === picked)?.id ?? null;
+    }
+    if (!locationGid) locationGid = await getPrimaryLocationGid(shop);
     if (!locationGid) {
       return NextResponse.json({ error: "No active location found for this shop." }, { status: 500 });
     }
@@ -209,7 +228,7 @@ export async function POST(req: NextRequest) {
     const locStatus = await checkLocation(shop, locationGid);
     if (locStatus.isActive === false && locStatus.checked === true) {
       return NextResponse.json({
-        error: `The primary location is inactive or archived in Shopify. Activate it before syncing.`,
+        error: `The selected location is inactive or archived in Shopify. Activate it before syncing.`,
         locationInactive: true,
       }, { status: 400 });
     }
@@ -321,15 +340,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const matchedItems = visibleItems.filter((item) =>
-      results.find((r) => r.lineItemId === item.id && r.inventoryItemId)
-    );
+    // Allocate the surcharge across ALL invoice lines (correct denominator),
+    // then apply only matched lines' shares below. Allocating over matched-only
+    // lines over-loads each matched unit's landed cost when some lines are unmatched.
     const landedCostAllocations = allocateLandedCosts(
-      matchedItems.map((it) => ({ costPrice: it.costPrice * exchangeRate, qty: it.qty })),
+      visibleItems.map((it) => ({ qty: it.qty, included: it.shipIncluded !== false })),
       po.invoiceTotals
     );
     const landedCostMap = new Map<string, number>();
-    matchedItems.forEach((item, idx) => {
+    visibleItems.forEach((item, idx) => {
       landedCostMap.set(item.id, landedCostAllocations[idx] ?? 0);
     });
 
@@ -364,10 +383,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const costSnapshot: Record<string, number> = {};
+    // Lines already written to Shopify by a PREVIOUS (partial) sync. Used to
+    // avoid double-applying inventory/cost AND to preserve the original reversal
+    // baselines (delta + cost) so a later delete can still undo them.
+    const priorSyncedIds = new Set(
+      ((po.syncResult && po.syncResult.results) || [])
+        .filter((r) => r.status === "synced")
+        .map((r) => r.lineItemId)
+    );
+    const priorDeltaMap = new Map<string, number>(
+      ((po.syncResult && po.syncResult.results) || [])
+        .filter((r) => r.status === "synced" && r.lineItemId)
+        .map((r) => [r.lineItemId, r.delta ?? 0])
+    );
+
+    // Seed from the existing snapshot so prior-sync baselines survive a re-sync;
+    // re-reading cost for already-synced lines would capture the post-sync
+    // averaged cost and corrupt the reversal baseline.
+    const costSnapshot: Record<string, number> = { ...(po.costSnapshot ?? {}) };
 
     for (const result of results) {
       if (!result.inventoryItemId || !result.landedCost || result.landedCost <= 0) continue;
+      if (priorSyncedIds.has(result.lineItemId)) continue;
       const level = levelMap.get(result.inventoryItemId);
       const lineItem = visibleItems.find((li) => li.id === result.lineItemId);
       const existingQty = level?.onHandQty ?? 0;
@@ -377,10 +414,11 @@ export async function POST(req: NextRequest) {
 
       let pushed: number;
       if (existingQty > 0 && existingCost > 0 && existingQty + incomingQty > 0) {
+        // True weighted average across existing + incoming units.
         pushed = (existingQty * existingCost + incomingQty * incomingCost) / (existingQty + incomingQty);
-      } else if (existingCost > 0) {
-        pushed = (existingCost + incomingCost) / 2;
       } else {
+        // No on-hand stock → the moving average is simply the incoming cost.
+        // (Averaging with a stale prior cost would fabricate a wrong COGS.)
         pushed = incomingCost;
       }
       result.newAvgCost = parseFloat(pushed.toFixed(4));
@@ -405,10 +443,19 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Lines already written to Shopify by a PREVIOUS (partial) sync must NOT be
+    // re-applied — priorSyncedIds / priorDeltaMap are computed above.
     const batchItems: Array<{ inventoryItemId: string; quantity: number; changeFromQuantity: number; lineItemId: string }> = [];
 
     for (const result of results) {
       if (!result.inventoryItemId) continue;
+      if (priorSyncedIds.has(result.lineItemId)) {
+        // already applied in a previous sync — keep reported as synced and
+        // PRESERVE its original delta so a later delete can still reverse it.
+        result.status = "synced";
+        result.delta = priorDeltaMap.get(result.lineItemId) ?? 0;
+        continue;
+      }
       const lineItem = visibleItems.find((li) => li.id === result.lineItemId);
       if (!lineItem) continue;
       const initialQty = levelMap.get(result.inventoryItemId)?.onHandQty ?? 0;
@@ -443,13 +490,14 @@ export async function POST(req: NextRequest) {
       await activateInventoryItems(shop, notStocked, locationGid);
     }
 
-    const { userErrors, groupId } = await batchSetInventory(
+    const { userErrors } = await batchSetInventory(
       shop,
       writeItems,
       locationGid,
       referenceDocumentUri
     );
 
+    let costErrorCount = 0;
     if (userErrors.length > 0) {
       const isConcurrencyError = userErrors.some(
         (e) => e.code === "INVALID" || e.message.toLowerCase().includes("quantity")
@@ -472,7 +520,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         for (const result of results) {
-          if (result.inventoryItemId) {
+          if (result.inventoryItemId && !priorSyncedIds.has(result.lineItemId)) {
             result.status = "error";
             result.errorMessage = userErrors.map((e) => e.message).join("; ");
           }
@@ -480,17 +528,20 @@ export async function POST(req: NextRequest) {
       }
     } else {
       for (const result of results) {
-        if (!result.inventoryItemId) continue;
+        if (!result.inventoryItemId || priorSyncedIds.has(result.lineItemId)) continue;
         const lineItem = visibleItems.find((li) => li.id === result.lineItemId);
         result.status = "synced";
         result.delta = lineItem?.qty ?? 0;
       }
 
-      await Promise.allSettled(
-        results
-          .filter((r) => r.inventoryItemId && r.newAvgCost && r.newAvgCost > 0)
-          .map((r) => updateInventoryItemCost(shop, r.inventoryItemId!, r.newAvgCost!))
+      const costTargets = results.filter((r) => r.inventoryItemId && r.newAvgCost && r.newAvgCost > 0 && !priorSyncedIds.has(r.lineItemId));
+      const costOutcomes = await Promise.allSettled(
+        costTargets.map((r) => updateInventoryItemCost(shop, r.inventoryItemId!, r.newAvgCost!))
       );
+      costOutcomes.forEach((o, i) => {
+        const errs = o.status === "rejected" ? String(o.reason) : o.value.userErrors.map((e) => e.message).join("; ");
+        if (errs) { costErrorCount++; console.error(`[sync] cost update failed for ${costTargets[i].inventoryItemId}: ${errs}`); }
+      });
     }
 
     const syncResult: SyncResult = {
@@ -499,6 +550,7 @@ export async function POST(req: NextRequest) {
       successCount: results.filter((r) => r.status === "synced").length,
       notFoundCount: results.filter((r) => r.status === "not_found").length,
       errorCount: results.filter((r) => r.status === "error").length,
+      costErrorCount,
     };
 
     const newStatus = syncResult.errorCount === 0 ? "approved" : "awaiting_review";
@@ -509,31 +561,7 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date().toISOString(),
     });
 
-    if (syncResult.successCount > 0) {
-      const auditLog: AuditLog = {
-        id: `${poId}_${Date.now()}`,
-        merchantId,
-        poId,
-        supplier: po.supplier,
-        invoiceNumber: po.invoiceNumber,
-        location: po.location,
-        syncedAt: syncResult.syncedAt,
-        successCount: syncResult.successCount,
-        notFoundCount: syncResult.notFoundCount,
-        errorCount: syncResult.errorCount,
-        referenceDocumentUri,
-        items: results.map((r) => ({
-          name: r.name,
-          sku: r.sku,
-          status: r.status,
-          delta: r.delta,
-          landedCost: r.landedCost,
-        })),
-      };
-      await adminDb.collection("auditLogs").doc(auditLog.id).set(auditLog).catch(() => {});
-    }
-
-    return NextResponse.json({ ...syncResult, dryRun: false, auditGroupId: groupId });
+    return NextResponse.json({ ...syncResult, dryRun: false });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
