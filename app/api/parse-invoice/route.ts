@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import { waitUntil } from "@vercel/functions";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { requireShop } from "@/lib/shopify/requireShop";
-import { getPlanTier, invoiceQuotaFor, appAccessBlock } from "@/lib/shopify/billing";
+import { getPlanTier, invoiceQuotaFor, appAccessBlock, applyTierOverride } from "@/lib/shopify/billing";
 import { getMonthlyInvoiceUsage, incrementMonthlyInvoiceUsage } from "@/lib/shopify/usage";
 import type { PurchaseOrder } from "@/lib/types";
 
@@ -43,7 +43,13 @@ export async function POST(req: NextRequest) {
 
     // Freemium gate: block only when we can't verify the subscription; free & paid
     // both proceed, separated by the monthly invoice quota below.
-    const tier = await getPlanTier(shop);
+    // applyTierOverride is a no-op unless QUOTA_TEST_OVERRIDE=1 AND this is a real
+    // dev store — it lets a dev store test the free/paid cap and can never touch a
+    // production merchant.
+    const tier = applyTierOverride(
+      await getPlanTier(shop),
+      req.nextUrl.searchParams.get("forceTier")
+    );
     const access = appAccessBlock(tier);
     if (access) return NextResponse.json(access.body, { status: access.status });
 

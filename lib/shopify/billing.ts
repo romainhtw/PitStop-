@@ -88,6 +88,28 @@ export async function getPlanTier(shop: string): Promise<PlanTier> {
   }
 }
 
+// Test-only tier override. Lets a genuine partner development store exercise the
+// real free/paid quota paths (block + counter writes) without a paid store.
+//
+// Hardened so it can NEVER affect a production merchant — two independent gates:
+//   1. QUOTA_TEST_OVERRIDE must be explicitly set to "1" in the environment, AND
+//   2. the store's REAL tier must be "dev" (partnerDevelopment === true, verified
+//      against Shopify — a real free/paid merchant can never be a dev store).
+// Because a real merchant fails gate #2, the override is structurally inert for
+// them regardless of env. The only possible effect is to make a DEV store's
+// enforcement stricter (cap it), which is harmless. Leave QUOTA_TEST_OVERRIDE
+// unset in production for defence-in-depth.
+// The forced tier comes from the ?forceTier= query param (for direct API calls)
+// or, so the normal upload UI can drive it with no code change, the
+// QUOTA_TEST_FORCE_TIER env var. The query param wins when both are present.
+export function applyTierOverride(realTier: PlanTier, forceTier: string | null): PlanTier {
+  if (process.env.QUOTA_TEST_OVERRIDE !== "1") return realTier;
+  if (realTier !== "dev") return realTier;
+  const requested = forceTier ?? process.env.QUOTA_TEST_FORCE_TIER ?? null;
+  if (requested === "free" || requested === "paid") return requested;
+  return realTier;
+}
+
 // Monthly invoice-parsing cap for a tier. Infinity = uncapped (dev stores).
 // "unknown" falls back to the paid cap so a transient billing-check failure never
 // throttles a paying merchant below their entitlement (access is still gated
