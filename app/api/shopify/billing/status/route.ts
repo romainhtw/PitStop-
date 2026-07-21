@@ -34,7 +34,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   // Authenticated from here on — every tier gets into the app.
   const tier = await getPlanTier(shop);
-  if (tier === "paid" || tier === "dev") {
+  // comp (complimentary), paid, and dev are all "active" with no upgrade CTA — and
+  // crucially comp never reaches createSubscription below, so it's never billed.
+  if (tier === "comp" || tier === "paid" || tier === "dev") {
     return NextResponse.json({ authenticated: true, active: true, tier, confirmationUrl: null, debug: tier.toUpperCase() });
   }
 
