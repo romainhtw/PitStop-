@@ -100,6 +100,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ── /compShops ────────────────────────────────────────────────────────────
+    // Complimentary-shop grants (one doc per gifted shop, id = shop domain).
+    // Read only by the server-side plan-tier check via Admin SDK; written by hand
+    // through the Firebase console. Never exposed to clients.
+    match /compShops/{shopDomain} {
+      allow read, write: if false;
+    }
+
     // ── Default deny ──────────────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

@@ -1,4 +1,5 @@
 import { shopifyFetch } from "@/lib/shopify";
+import { adminDb } from "@/lib/firebaseAdmin";
 
 export const PLAN = {
   name: "PitStop",
@@ -50,6 +51,8 @@ export async function getActiveSubscription(
 
 // ── Plan tier & access ─────────────────────────────────────────────────────────
 // Freemium model:
+//   "comp"    → complimentary shop (manual gift). Uncapped and NEVER billed.
+//               Checked first, overrides every other tier. See isCompShop.
 //   "free"    → no active subscription. The app is fully usable, but invoice
 //               parsing is capped at INVOICE_QUOTA.free per calendar month.
 //   "paid"    → an ACTIVE recurring subscription. Cap raised to INVOICE_QUOTA.paid.
@@ -57,13 +60,57 @@ export async function getActiveSubscription(
 //   "unknown" → couldn't verify the subscription (transient Shopify/API error).
 //
 // Only "unknown" blocks app access (fail closed with a retry — NEVER tell a
-// possibly-paying merchant to subscribe). Free and paid both get in; the monthly
-// quota at the invoice-parsing route is what separates the tiers.
+// possibly-paying merchant to subscribe). comp/free/paid/dev all get in; the
+// monthly quota at the invoice-parsing route is what separates the tiers.
 export const INVOICE_QUOTA = { free: 5, paid: 100 } as const;
 
-export type PlanTier = "dev" | "paid" | "free" | "unknown";
+export type PlanTier = "comp" | "dev" | "paid" | "free" | "unknown";
+
+// ── Complimentary (comp) shops ──────────────────────────────────────────────────
+// A doc per gifted shop in the server-only "compShops" collection, keyed by shop
+// domain (e.g. "jack.myshopify.com"):
+//   { addedAt, note?, expiresAt? }
+// A shop is comp when the doc exists AND expiresAt is absent or still in the
+// future. Writes/reads are Admin-SDK only — see firestore.rules.
+const COMP_SHOPS_COLLECTION = "compShops";
+
+// Normalise an expiresAt value (Firestore Timestamp, ISO string, or epoch ms) to
+// milliseconds. Returns null when it can't be interpreted.
+function toMillis(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "object" && typeof (v as { toMillis?: unknown }).toMillis === "function") {
+    return (v as { toMillis: () => number }).toMillis();
+  }
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") {
+    const ms = Date.parse(v);
+    return Number.isNaN(ms) ? null : ms;
+  }
+  return null;
+}
+
+export async function isCompShop(shop: string): Promise<boolean> {
+  try {
+    const snap = await adminDb.collection(COMP_SHOPS_COLLECTION).doc(shop).get();
+    if (!snap.exists) return false;
+    const expiresAt = snap.data()?.expiresAt;
+    if (expiresAt == null) return true; // no expiry → comp forever
+    const expiryMs = toMillis(expiresAt);
+    // An unparseable expiry is treated as still active: comp is a deliberate
+    // manual gift, so we never let a malformed date silently start billing them.
+    if (expiryMs == null) return true;
+    return expiryMs > Date.now();
+  } catch {
+    // Firestore hiccup — don't wrongly grant comp; fall through to the real tier.
+    return false;
+  }
+}
 
 export async function getPlanTier(shop: string): Promise<PlanTier> {
+  // Complimentary shops win over everything: a manual gift is uncapped and must
+  // never touch Shopify billing. Checked before any Shopify API call.
+  if (await isCompShop(shop)) return "comp";
+
   // Dev-store detection is best-effort: if it fails we fall through and let the
   // subscription check below be authoritative.
   try {
@@ -110,12 +157,13 @@ export function applyTierOverride(realTier: PlanTier, forceTier: string | null):
   return realTier;
 }
 
-// Monthly invoice-parsing cap for a tier. Infinity = uncapped (dev stores).
+// Monthly invoice-parsing cap for a tier. Infinity = uncapped (comp & dev stores).
 // "unknown" falls back to the paid cap so a transient billing-check failure never
 // throttles a paying merchant below their entitlement (access is still gated
 // separately by appAccessBlock, which fails closed on "unknown").
 export function invoiceQuotaFor(tier: PlanTier): number {
   switch (tier) {
+    case "comp":
     case "dev":
       return Number.POSITIVE_INFINITY;
     case "paid":
@@ -127,8 +175,8 @@ export function invoiceQuotaFor(tier: PlanTier): number {
 }
 
 // App-access gate for mutating routes. Blocks ONLY when we couldn't verify the
-// shop's subscription; every real tier (dev/paid/free) is allowed through. Keeps
-// the 503 messaging identical across every gated route.
+// shop's subscription; every real tier (comp/dev/paid/free) is allowed through.
+// Keeps the 503 messaging identical across every gated route.
 export function appAccessBlock(
   tier: PlanTier
 ): { status: number; body: Record<string, string> } | null {
