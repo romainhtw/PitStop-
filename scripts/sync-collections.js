@@ -71,7 +71,7 @@ async function listCollection(col, token) {
 // ── Shopify GraphQL ──────────────────────────────────────────────────────────
 const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
 const SHOPIFY_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-const API_VERSION = "2025-04";
+const API_VERSION = "2026-07";
 
 if (!SHOPIFY_DOMAIN || !SHOPIFY_TOKEN) {
   console.error("Set SHOPIFY_STORE_DOMAIN and SHOPIFY_ADMIN_ACCESS_TOKEN");

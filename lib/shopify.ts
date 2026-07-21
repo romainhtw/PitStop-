@@ -1,6 +1,6 @@
 import { getShop } from "@/lib/shopify/shops";
 
-const API_VERSION = "2025-04";
+const API_VERSION = "2026-07";
 
 // Full-jitter exponential backoff: sleep random(0, min(cap_ms, base_ms * 2^attempt))
 function jitterDelay(attempt: number, baseMs = 500, capMs = 8000): Promise<void> {
@@ -765,7 +765,10 @@ export async function batchSetInventory(
           inventoryItemId: it.inventoryItemId,
           locationId: locationGid,
           quantity: it.quantity,
-          compareQuantity: it.changeFromQuantity,
+          // API 2026-04 removed `compareQuantity`/`ignoreCompareQuantity` from
+          // inventorySetQuantities; `changeFromQuantity` (the expected pre-update
+          // qty) replaces it — an integer enables the same compare-and-swap check.
+          changeFromQuantity: it.changeFromQuantity,
         })),
       },
     });
