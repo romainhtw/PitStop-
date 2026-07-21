@@ -10,7 +10,7 @@ scopes = "write_products,read_locations,write_inventory"
 redirect_urls = [ "https://pitstop.arc-labs.com.au/api/shopify/auth/callback" ]
 
 [webhooks]
-api_version = "2025-04"
+api_version = "2026-07"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
