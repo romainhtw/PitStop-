@@ -613,6 +613,8 @@ const FETCH_INVENTORY_LEVELS_QUERY = /* GraphQL */ `
 `;
 
 interface FetchInventoryLevelsData {
+  // nodes(ids:) returns null for any GID that no longer resolves (deleted
+  // product/variant), and an id-less {} when the GID is not an InventoryItem.
   nodes: Array<{
     id: string;
     tracked?: boolean;
@@ -620,7 +622,7 @@ interface FetchInventoryLevelsData {
     inventoryLevel?: {
       quantities: Array<{ name: string; quantity: number }>;
     } | null;
-  }>;
+  } | null>;
 }
 
 export interface InventoryLevelResult {
@@ -643,13 +645,15 @@ export async function fetchInventoryLevels(
     FETCH_INVENTORY_LEVELS_QUERY,
     { ids: inventoryItemIds, locationId: locationGid }
   );
-  return (result?.data?.nodes ?? []).map((node) => ({
-    inventoryItemId: node.id,
-    onHandQty: node.inventoryLevel?.quantities?.find((q) => q.name === "on_hand")?.quantity ?? 0,
-    unitCost: node.unitCost ? parseFloat(node.unitCost.amount) : null,
-    tracked: node.tracked ?? true,
-    stocked: !!node.inventoryLevel,
-  }));
+  return (result?.data?.nodes ?? [])
+    .filter((node): node is NonNullable<typeof node> => node != null && !!node.id)
+    .map((node) => ({
+      inventoryItemId: node.id,
+      onHandQty: node.inventoryLevel?.quantities?.find((q) => q.name === "on_hand")?.quantity ?? 0,
+      unitCost: node.unitCost ? parseFloat(node.unitCost.amount) : null,
+      tracked: node.tracked ?? true,
+      stocked: !!node.inventoryLevel,
+    }));
 }
 
 const INVENTORY_ACTIVATE_MUTATION = /* GraphQL */ `

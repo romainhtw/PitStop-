@@ -340,6 +340,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Stale-match guard: an inventoryItemId we asked for but Shopify didn't
+    // return means the matched product was deleted (or re-created) since the
+    // mapping was learned. Flag the line for re-matching instead of writing
+    // inventory against a dead GID.
+    for (const result of results) {
+      if (!result.inventoryItemId || levelMap.has(result.inventoryItemId)) continue;
+      result.status = "error";
+      result.errorMessage = `Matched Shopify product no longer exists (it may have been deleted or re-created). Re-match "${result.name}" and try again.`;
+      result.inventoryItemId = undefined;
+      result.shopifyVariantId = undefined;
+      result.matchedFromCache = undefined;
+    }
+
     // Allocate the surcharge across ALL invoice lines (correct denominator),
     // then apply only matched lines' shares below. Allocating over matched-only
     // lines over-loads each matched unit's landed cost when some lines are unmatched.
