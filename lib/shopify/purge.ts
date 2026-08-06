@@ -30,6 +30,13 @@ export async function purgeShopData(shop: string): Promise<void> {
     }
   }
 
+  // Docs keyed by shop domain rather than a merchantId field
+  try {
+    await adminDb.collection("stockSnapshot").doc(shop).delete();
+  } catch (err) {
+    console.error(`[purgeShopData] failed to delete stockSnapshot/${shop}:`, err);
+  }
+
   // Delete the shop document itself
   try {
     await adminDb.collection("shops").doc(shop).delete();

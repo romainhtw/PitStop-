@@ -33,6 +33,7 @@ export default function NavMenu() {
       </a>
       <a href="/purchase-orders/new">Purchase Orders</a>
       <a href="/stock-take">Stock Take</a>
+      <a href="/stock-value">Stock Value</a>
       <a href="/catalog">Catalog</a>
     </ui-nav-menu>
   );
