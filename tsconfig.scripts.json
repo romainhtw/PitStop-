@@ -3,7 +3,9 @@
     "target": "ES2020",
     "module": "commonjs",
     "moduleResolution": "node",
-    "lib": ["ES2020"],
+    "lib": [
+      "ES2020"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -11,9 +13,16 @@
     "resolveJsonModule": true,
     "outDir": ".ts-node-out",
     "paths": {
-      "@/*": ["./*"]
-    }
+      "@/*": [
+        "./*"
+      ]
+    },
+    "baseUrl": "."
   },
-  "include": ["scripts/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "scripts/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
