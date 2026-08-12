@@ -37,6 +37,31 @@ export const BULK_STOCK_QUERY = /* GraphQL */ `
   }
 `;
 
+/**
+ * Fallback query for apps whose Shopify credentials cannot read locations
+ * (`read_locations` not granted). It asks for no location data at all, so it
+ * cannot be refused for that reason, and yields the same headline figures —
+ * `inventoryQuantity` is the variant's available stock across every location.
+ * The trade-off is no per-location breakdown.
+ */
+export const BULK_STOCK_QUERY_TOTALS_ONLY = /* GraphQL */ `
+  {
+    productVariants {
+      edges {
+        node {
+          id
+          price
+          inventoryQuantity
+          inventoryItem {
+            id
+            unitCost { amount }
+          }
+        }
+      }
+    }
+  }
+`;
+
 export interface LocationTotals {
   /** integer minor units (hundredths) */
   cost: number;
@@ -162,6 +187,52 @@ export async function aggregateStockLines(
     byLocation: out,
     all: { cost: Math.round(all.costTt / 100), retail: Math.round(all.retailTt / 100), items: all.items },
     locations: Array.from(locationNames, ([id, name]) => ({ id, name })),
+  };
+}
+
+/**
+ * Aggregate the totals-only JSONL (see BULK_STOCK_QUERY_TOTALS_ONLY). Every row
+ * is a variant carrying its all-locations quantity, so there are no child rows
+ * and no per-location breakdown to build.
+ */
+export async function aggregateStockTotals(
+  lines: AsyncIterable<string>
+): Promise<{ totalVariants: number; missingCostCount: number; all: LocationTotals }> {
+  let totalVariants = 0;
+  let missingCostCount = 0;
+  let costTt = 0;
+  let retailTt = 0;
+  let items = 0;
+
+  for await (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const v = JSON.parse(line) as {
+      id?: string;
+      price?: string;
+      inventoryQuantity?: number | null;
+      inventoryItem?: { unitCost?: { amount: string } | null } | null;
+      __parentId?: string;
+    };
+    // Defensive: this query emits no child rows, but never count one if it does.
+    if (v.__parentId || !v.id?.includes("/ProductVariant/")) continue;
+
+    totalVariants++;
+    // Negative quantities are kept as-is — clamping hides real oversell.
+    const qty = v.inventoryQuantity ?? 0;
+    const price = toTenThousandths(v.price ?? "0");
+    const cost = v.inventoryItem?.unitCost ? toTenThousandths(v.inventoryItem.unitCost.amount) : null;
+
+    items += qty;
+    retailTt += price * qty;
+    if (cost !== null) costTt += cost * qty;
+    else if (qty !== 0) missingCostCount++;
+  }
+
+  return {
+    totalVariants,
+    missingCostCount,
+    all: { cost: Math.round(costTt / 100), retail: Math.round(retailTt / 100), items },
   };
 }
 

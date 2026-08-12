@@ -108,13 +108,18 @@ async function fetchAllActiveLocations(shop: string): Promise<Array<{ id: string
   const all: Array<{ id: string; name: string }> = [];
   let cursor: string | null = null;
   for (;;) {
-    const page: { data?: LocationsPageData } = await shopifyFetch<LocationsPageData>(
-      shop,
-      LOCATIONS_PAGE_QUERY,
-      { cursor }
-    );
+    const page: { data?: LocationsPageData; errors?: Array<{ message: string }> } =
+      await shopifyFetch<LocationsPageData>(shop, LOCATIONS_PAGE_QUERY, { cursor });
     const conn = page.data?.locations;
-    if (!conn) break;
+    if (!conn) {
+      // Log it — this used to fail silently and looked like a store with no
+      // locations, which then surfaced much later as a bulk ACCESS_DENIED.
+      console.warn(
+        `[stockValue] ${shop}: locations unreadable —`,
+        page.errors?.map((e) => e.message).join("; ") ?? "no data returned"
+      );
+      break;
+    }
     all.push(...conn.nodes);
     if (!conn.pageInfo.hasNextPage) break;
     cursor = conn.pageInfo.endCursor;
