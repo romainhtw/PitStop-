@@ -45,3 +45,6 @@ next-env.d.ts
 PITSTOP_FEATURES.md
 
 .vercel
+.env*.local
+
+.playwright-mcp

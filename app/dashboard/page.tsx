@@ -109,6 +109,20 @@ function StatCard({ label, value, loading, href, children }: StatCardProps) {
   return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
+// The stat strip mirrors the Stock Value snapshot so the two pages can never
+// disagree. Only the shape is shared — lib/stockValue/snapshot.ts pulls in
+// firebase-admin and can't be imported client-side.
+interface StockTotals {
+  cost: number; // integer minor units
+  retail: number; // integer minor units
+  items: number;
+}
+interface StockSnapshot {
+  updatedAt?: string;
+  currencyCode: string;
+  totals?: Record<string, StockTotals>;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -116,12 +130,22 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("");
   const [reusing, setReusing] = useState<string | null>(null);
   const [reuseError, setReuseError] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<StockSnapshot | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(true);
 
   useEffect(() => {
     apiFetch("/api/purchase-orders")
       .then((r) => r.json())
       .then((data) => setOrders(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    apiFetch("/api/shopify/stock-value")
+      .then((r) => (r.ok ? r.json() : { snapshot: null }))
+      .then((data) => setSnapshot(data.snapshot ?? null))
+      .catch(() => setSnapshot(null))
+      .finally(() => setSnapshotLoading(false));
   }, []);
 
   async function handleReuse(po: PurchaseOrder) {
@@ -170,9 +194,16 @@ export default function DashboardPage() {
       )
     : orders;
 
-  const totalCost   = orders.reduce((s, po) => s + po.lineItems.reduce((a, li) => a + li.qty * li.costPrice, 0), 0);
-  const totalRetail = orders.reduce((s, po) => s + po.lineItems.reduce((a, li) => a + li.qty * li.retailPrice, 0), 0);
-  const totalItems  = orders.reduce((s, po) => s + po.lineItems.reduce((a, li) => a + li.qty, 0), 0);
+  // Purchase-order spend, used only for the supplier share bars below. This is
+  // money ordered from suppliers — NOT the value of stock on hand, which comes
+  // from the Stock Value snapshot.
+  const totalCost = orders.reduce((s, po) => s + po.lineItems.reduce((a, li) => a + li.qty * li.costPrice, 0), 0);
+
+  const stock = snapshot?.totals?.all;
+  const stockMoney = (minor: number) =>
+    snapshot?.currencyCode
+      ? new Intl.NumberFormat(undefined, { style: "currency", currency: snapshot.currencyCode }).format(minor / 100)
+      : "—";
 
   const supplierSpend = orders
     .filter((po) => po.status === "approved")
@@ -215,12 +246,21 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Stat strip */}
+      {/* Stat strip — stock on hand, straight from the Stock Value snapshot */}
       <div className="grid grid-cols-3 gap-px border border-border-0 bg-border-0 mb-6 overflow-hidden">
-        <StatCard label="Cost Value"  value={fmt(totalCost)}   loading={loading} />
-        <StatCard label="Retail Value" value={fmt(totalRetail)} loading={loading} />
-        <StatCard label="Total Items" value={totalItems}        loading={loading} />
+        <StatCard label="Total Cost"   value={stock ? stockMoney(stock.cost) : "—"}      loading={snapshotLoading} href="/stock-value" />
+        <StatCard label="Total Retail" value={stock ? stockMoney(stock.retail) : "—"}    loading={snapshotLoading} href="/stock-value" />
+        <StatCard label="Total Items"  value={stock ? stock.items.toLocaleString() : "—"} loading={snapshotLoading} href="/stock-value" />
       </div>
+      {!snapshotLoading && !stock && (
+        <p className="-mt-4 mb-6 text-xs text-text-tertiary">
+          Stock value not calculated yet —{" "}
+          <Link href="/stock-value" className="text-accent hover:text-accent-dim">
+            open Stock Value
+          </Link>{" "}
+          to run it.
+        </p>
+      )}
 
       {/* Purchase Orders table */}
       <div className="bg-surface-1 border border-border-0 mb-6">
