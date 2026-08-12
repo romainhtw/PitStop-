@@ -12,7 +12,11 @@ export async function GET(req: NextRequest) {
     if (!shop) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     const merchantId = shop;
     const url = new URL(req.url);
-    const limitParam = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 200);
+    // Default high enough to cover a merchant's whole history rather than the
+    // most recent slice — the dashboard searches and totals client-side over
+    // whatever it receives, so a truncated list silently hides real orders.
+    // Orders weigh ~5 KB each, so 500 is roughly a 2.5 MB response.
+    const limitParam = Math.min(parseInt(url.searchParams.get("limit") ?? "500"), 1000);
     // Read the merchant's orders, THEN sort, THEN cut to the limit. Limiting in
     // the query without an orderBy let Firestore return an arbitrary slice
     // (ordered by document id, which is a uuid), so with more orders than the
