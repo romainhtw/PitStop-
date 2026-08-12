@@ -13,15 +13,21 @@ export async function GET(req: NextRequest) {
     const merchantId = shop;
     const url = new URL(req.url);
     const limitParam = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 200);
+    // Read the merchant's orders, THEN sort, THEN cut to the limit. Limiting in
+    // the query without an orderBy let Firestore return an arbitrary slice
+    // (ordered by document id, which is a uuid), so with more orders than the
+    // limit, recent invoices went missing from the dashboard at random.
+    // Sorting client-side avoids needing a composite index; if this collection
+    // ever grows past a few thousand per merchant, switch to an indexed
+    // orderBy("createdAt", "desc") query instead.
     const snap = await adminDb
       .collection("purchaseOrders")
       .where("merchantId", "==", merchantId)
-      .limit(limitParam)
       .get();
-    // Sort client-side — avoids needing a composite Firestore index
     const orders = snap.docs
       .map((d) => d.data() as PurchaseOrder)
-      .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+      .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
+      .slice(0, limitParam);
     return NextResponse.json(orders);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
