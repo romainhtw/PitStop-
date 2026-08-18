@@ -176,6 +176,10 @@ export default function ReviewPurchaseOrderPage() {
   const [loaded, setLoaded] = useState(false);
   const [previewResult, setPreviewResult] = useState<SyncResult | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  // "Was anything ever actually pushed to Shopify?" — the only honest source of
+  // truth for the synced badge. Status alone lies: a PO whose lines all came
+  // back not_found used to read as approved with nothing sent.
+  const [syncedOnce, setSyncedOnce] = useState(false);
   // Line-item ids already pushed to Shopify by a prior (partial) sync. These are
   // locked read-only in the edit table: the sync engine skips already-synced
   // lines, so editing one would silently NOT reach Shopify while the UI showed
@@ -307,6 +311,7 @@ export default function ReviewPurchaseOrderPage() {
         if (po.pdfUrl) setPdfUrl(po.pdfUrl);
         if (po.syncResult) {
           setSyncResult(po.syncResult);
+          setSyncedOnce((po.syncResult.successCount ?? 0) > 0);
           setLockedLineIds(
             new Set(
               (po.syncResult.results ?? [])
@@ -725,6 +730,7 @@ export default function ReviewPurchaseOrderPage() {
       if (conflicts.length > 0) setConflictItems(conflicts);
       setPreviewResult(null);
       setSyncResult(result);
+      setSyncedOnce((result.successCount ?? 0) > 0);
       // Lock any line that just synced so a follow-up edit + re-sync can't
       // silently diverge from Shopify (the sync engine skips prior-synced lines).
       setLockedLineIds((prev) => {
@@ -1304,7 +1310,7 @@ export default function ReviewPurchaseOrderPage() {
           >
             {submitting ? "Saving…" : "Save"}
           </button>
-          {poStatus === "approved" ? (
+          {syncedOnce ? (
             <span className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-medium px-6 py-2.5 rounded">
               ✅ Synced to Shopify
             </span>
@@ -1768,7 +1774,7 @@ export default function ReviewPurchaseOrderPage() {
             </button>
             <button
               onClick={handleConfirmSync}
-              disabled={syncing || poStatus === "approved"}
+              disabled={syncing || syncedOnce}
               className="inline-flex items-center gap-2 bg-accent hover:bg-accent-dim disabled:opacity-50 text-white text-sm font-medium px-6 py-2.5 rounded transition-colors"
             >
               {syncing ? (
@@ -1779,7 +1785,7 @@ export default function ReviewPurchaseOrderPage() {
                   </svg>
                   Syncing…
                 </>
-              ) : poStatus === "approved" ? "Already synced" : "Confirm & Sync to Shopify"}
+              ) : syncedOnce ? "Already synced" : "Confirm & Sync to Shopify"}
             </button>
           </div>
         </div>
