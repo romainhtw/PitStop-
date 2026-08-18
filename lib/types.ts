@@ -15,6 +15,12 @@ export interface InvoiceTotals {
   grandTotal: number;
 }
 
+export interface ConfirmedMatch {
+  variantId: string;
+  inventoryItemId: string;
+  productTitle: string;
+}
+
 export interface LineItem {
   id: string;
   name: string;
@@ -30,6 +36,11 @@ export interface LineItem {
   // Whether this line shares in the shipping/landed-cost allocation. Undefined =
   // included (default). Set false to exclude it from the even shipping split.
   shipIncluded?: boolean;
+  // A Shopify variant the merchant picked by hand in the sync preview. It lives on
+  // the line item so it survives leaving the page: it used to be React state
+  // only, so Save — which navigates to the dashboard — threw the matching away
+  // without a word, and the next sync reported the line as not found again.
+  confirmedMatch?: ConfirmedMatch;
 }
 
 export interface VariantSuggestion {

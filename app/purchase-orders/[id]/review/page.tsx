@@ -289,6 +289,7 @@ export default function ReviewPurchaseOrderPage() {
             retailPrice: Number(li.retailPrice) || 0,
             gstApplicable: li.gstApplicable ?? true,
             hidden: li.hidden || false,
+            confirmedMatch: li.confirmedMatch,
           }))
         );
 
@@ -432,19 +433,30 @@ export default function ReviewPurchaseOrderPage() {
   }, [matchSignature, catalog]);
 
   // Confirm a catalog product as the Shopify match for a line item
-  const confirmMatch = (lineItemId: string, p: ShopifyProduct) => {
-    setConfirmedMappings((prev) => ({
-      ...prev,
-      [lineItemId]: { variantId: p.variantId, inventoryItemId: p.inventoryItemId, productTitle: p.productTitle },
-    }));
-  };
-  const clearMatch = (lineItemId: string) => {
+  // Record a pick and save it straight away. buildPayload() sends lineItems, so
+  // writing the match onto the line makes it durable through every exit route —
+  // Save, a reload, an expired session — instead of dying with the page.
+  const applyMapping = (lineItemId: string, match: ConfirmedMapping | null) => {
     setConfirmedMappings((prev) => {
       const next = { ...prev };
-      delete next[lineItemId];
+      if (match) next[lineItemId] = match; else delete next[lineItemId];
       return next;
     });
+    const next = lineItems.map((li) =>
+      li.id === lineItemId ? { ...li, confirmedMatch: match ?? undefined } : li
+    );
+    setLineItems(next);
+    // Fire-and-forget: the pick is already in state and every later save carries
+    // it, so a failed write must not block the merchant mid-review.
+    void apiFetch(`/api/purchase-orders/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...buildPayload(), lineItems: next, status: poStatus }),
+    }).catch(() => {});
   };
+  const confirmMatch = (lineItemId: string, p: ShopifyProduct) =>
+    applyMapping(lineItemId, { variantId: p.variantId, inventoryItemId: p.inventoryItemId, productTitle: p.productTitle });
+  const clearMatch = (lineItemId: string) => applyMapping(lineItemId, null);
 
   // Task 5 — add a brand-new line item straight from the catalog, pre-matched
   const addItemFromCatalog = (p: ShopifyProduct) => {
@@ -546,14 +558,11 @@ export default function ReviewPurchaseOrderPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || "Creation failed");
-      setConfirmedMappings((prev) => ({
-        ...prev,
-        [lineItemId]: {
-          variantId: data.variantId,
-          inventoryItemId: data.inventoryItemId,
-          productTitle: data.productTitle,
-        },
-      }));
+      applyMapping(lineItemId, {
+        variantId: data.variantId,
+        inventoryItemId: data.inventoryItemId,
+        productTitle: data.productTitle,
+      });
       // The product is created, but SKU/barcode/price can still fail to save
       // (e.g. duplicate SKU). Surface the server's non-fatal warning so the
       // operator knows to fix it rather than believing everything saved cleanly.
@@ -1419,14 +1428,11 @@ export default function ReviewPurchaseOrderPage() {
                                     <button
                                       key={s.variantId}
                                       onClick={() =>
-                                        setConfirmedMappings((prev) => ({
-                                          ...prev,
-                                          [r.lineItemId]: {
-                                            variantId: s.variantId,
-                                            inventoryItemId: s.inventoryItemId,
-                                            productTitle: s.productTitle,
-                                          },
-                                        }))
+                                        applyMapping(r.lineItemId, {
+                                          variantId: s.variantId,
+                                          inventoryItemId: s.inventoryItemId,
+                                          productTitle: s.productTitle,
+                                        })
                                       }
                                       className="w-full flex items-center justify-between gap-3 bg-surface-1 hover:bg-surface-2 rounded-lg px-3 py-2.5 border border-amber-200 hover:border-accent transition-all text-left group"
                                     >
@@ -1496,7 +1502,7 @@ export default function ReviewPurchaseOrderPage() {
                                         {manualSearchResults[r.lineItemId].map((s) => (
                                           <button
                                             key={s.variantId}
-                                            onClick={() => setConfirmedMappings((prev) => ({ ...prev, [r.lineItemId]: { variantId: s.variantId, inventoryItemId: s.inventoryItemId, productTitle: s.productTitle } }))}
+                                            onClick={() => applyMapping(r.lineItemId, { variantId: s.variantId, inventoryItemId: s.inventoryItemId, productTitle: s.productTitle })}
                                             className="w-full flex items-center justify-between gap-3 bg-surface-1 hover:bg-surface-2 rounded-lg px-3 py-2.5 border border-amber-200 hover:border-accent transition-all text-left group"
                                           >
                                             <div className="min-w-0 flex-1">
@@ -1671,7 +1677,7 @@ export default function ReviewPurchaseOrderPage() {
                                     {manualSearchResults[r.lineItemId].map((s) => (
                                       <button
                                         key={s.variantId}
-                                        onClick={() => setConfirmedMappings((prev) => ({ ...prev, [r.lineItemId]: { variantId: s.variantId, inventoryItemId: s.inventoryItemId, productTitle: s.productTitle } }))}
+                                        onClick={() => applyMapping(r.lineItemId, { variantId: s.variantId, inventoryItemId: s.inventoryItemId, productTitle: s.productTitle })}
                                         className="w-full flex items-center justify-between gap-3 bg-surface-1 hover:bg-surface-2 rounded-lg px-3 py-2.5 border border-amber-200 hover:border-accent transition-all text-left group"
                                       >
                                         <div className="min-w-0">
@@ -1766,7 +1772,8 @@ export default function ReviewPurchaseOrderPage() {
           )}
           <div className="flex items-center justify-end gap-3">
             <button
-              onClick={() => { setPreviewResult(null); setConfirmedMappings({}); }}
+              // Leaves the confirmed picks alone — they are saved on the line items now.
+              onClick={() => setPreviewResult(null)}
               disabled={syncing}
               className="border border-border-1 text-text-secondary hover:bg-surface-2 disabled:opacity-50 text-sm font-medium px-5 py-2.5 rounded transition-colors"
             >

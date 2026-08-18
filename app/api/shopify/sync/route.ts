@@ -249,7 +249,9 @@ export async function POST(req: NextRequest) {
         status: "not_found",
       };
       try {
-        const override = overrides?.[item.id];
+        // The request's overrides are this session's picks; confirmedMatch is what
+        // the merchant confirmed earlier and saved onto the line.
+        const override = overrides?.[item.id] ?? item.confirmedMatch;
         if (override) {
           result.shopifyVariantId = override.variantId;
           result.inventoryItemId = override.inventoryItemId;
