@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Idempotency guard ──────────────────────────────────────────────────
-    if (!dryRun && po.status === "approved" && po.syncResult) {
+    if (!dryRun && po.status === "approved" && po.syncResult && po.syncResult.successCount > 0) {
       return NextResponse.json({
         ...po.syncResult,
         dryRun: false,
@@ -566,7 +566,14 @@ export async function POST(req: NextRequest) {
       costErrorCount,
     };
 
-    const newStatus = syncResult.errorCount === 0 ? "approved" : "awaiting_review";
+    // A PO counts as synced only when something actually landed in Shopify.
+    // errorCount alone is not enough: an invoice whose lines all come back
+    // "not_found" has zero errors and zero writes — approving it there marked
+    // the invoice done while Shopify never received a thing.
+    const newStatus =
+      syncResult.errorCount === 0 && syncResult.successCount > 0
+        ? "approved"
+        : "awaiting_review";
     await poRef.update({
       status: newStatus,
       syncResult,
