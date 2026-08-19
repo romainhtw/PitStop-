@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/apiClient";
 import { useRouter } from "next/navigation";
 import type { PurchaseOrder, POStatus } from "@/lib/types";
+import { findStuckInvoices } from "@/lib/stuckInvoices";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { StatusType } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
@@ -126,6 +127,9 @@ interface StockSnapshot {
 export default function DashboardPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  // Invoices that quietly went nowhere. Computed from the history already loaded
+  // here — no extra request, and nothing to configure.
+  const stuckInvoices = useMemo(() => findStuckInvoices(orders), [orders]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [reusing, setReusing] = useState<string | null>(null);
@@ -238,6 +242,32 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {stuckInvoices.length > 0 && (
+        <div role="alert" className="mb-4 bg-status-drift-bg border border-status-drift/30 px-4 py-3">
+          <p className="text-sm font-medium text-status-drift mb-2">
+            {stuckInvoices.length} invoice{stuckInvoices.length === 1 ? "" : "s"} need{stuckInvoices.length === 1 ? "s" : ""} attention
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {stuckInvoices.slice(0, 5).map((s) => (
+              <li key={s.id} className="text-xs text-text-secondary flex flex-wrap items-baseline gap-x-2">
+                <Link
+                  href={`/purchase-orders/${s.id}/review`}
+                  className="text-accent hover:text-accent-dim font-medium transition-colors"
+                >
+                  {s.supplier}{s.invoiceNumber ? ` · ${s.invoiceNumber}` : ""}
+                </Link>
+                <span>{s.detail}</span>
+              </li>
+            ))}
+          </ul>
+          {stuckInvoices.length > 5 && (
+            <p className="text-xs text-text-tertiary mt-1.5">
+              +{stuckInvoices.length - 5} more
+            </p>
+          )}
+        </div>
+      )}
 
       {reuseError && (
         <div role="alert" className="mb-4 flex items-center justify-between gap-3 bg-status-shortage-bg border border-status-shortage/30 px-4 py-2.5">
