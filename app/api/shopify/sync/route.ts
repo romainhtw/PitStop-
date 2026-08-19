@@ -15,6 +15,7 @@ import {
 import { requireShop } from "@/lib/shopify/requireShop";
 import { getPlanTier, appAccessBlock } from "@/lib/shopify/billing";
 import { lookupMapping, saveMapping, lookupNameMapping, saveNameMapping } from "@/lib/adminMappings";
+import { landedInShopify, statusAfterSync } from "@/lib/syncOutcome";
 import type { PurchaseOrder, LineSyncResult, SyncResult, VariantSuggestion } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -176,7 +177,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Idempotency guard ──────────────────────────────────────────────────
-    if (!dryRun && po.status === "approved" && po.syncResult && po.syncResult.successCount > 0) {
+    if (!dryRun && po.status === "approved" && landedInShopify(po.syncResult)) {
       return NextResponse.json({
         ...po.syncResult,
         dryRun: false,
@@ -568,14 +569,7 @@ export async function POST(req: NextRequest) {
       costErrorCount,
     };
 
-    // A PO counts as synced only when something actually landed in Shopify.
-    // errorCount alone is not enough: an invoice whose lines all come back
-    // "not_found" has zero errors and zero writes — approving it there marked
-    // the invoice done while Shopify never received a thing.
-    const newStatus =
-      syncResult.errorCount === 0 && syncResult.successCount > 0
-        ? "approved"
-        : "awaiting_review";
+    const newStatus = statusAfterSync(syncResult);
     await poRef.update({
       status: newStatus,
       syncResult,
